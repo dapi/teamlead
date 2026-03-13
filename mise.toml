@@ -1,0 +1,14 @@
+[tools]
+rust = "1.92.0"
+
+[tasks.fmt]
+description = "Format Rust sources"
+run = "cargo fmt"
+
+[tasks.test]
+description = "Run unit tests"
+run = "cargo test"
+
+[tasks.check]
+description = "Run cargo check"
+run = "cargo check"

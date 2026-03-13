@@ -1,0 +1,19 @@
+github:
+  project_id: "PVT_kwHNeaPOAUaljg"
+
+issue_analysis_flow:
+  statuses:
+    backlog: "Backlog"
+    analysis_in_progress: "Analysis In Progress"
+    waiting_for_clarification: "Waiting for Clarification"
+    waiting_for_plan_review: "Waiting for Plan Review"
+    ready_for_implementation: "Ready for Implementation"
+    analysis_blocked: "Analysis Blocked"
+
+runtime:
+  max_parallel: 1
+  poll_interval_seconds: 3600
+
+zellij:
+  session_name: "ai-teamlead"
+  tab_name: "issue-analysis"

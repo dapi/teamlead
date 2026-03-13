@@ -17,6 +17,11 @@ Options:
   --out-dir DIR      Directory for generated reports.
                      Default: .docvalidate/reviews/<timestamp>
   --model MODEL      Pass model to codex exec.
+  --reasoning LEVEL  Codex reasoning effort: low, medium, high.
+                     Default: medium
+  --timeout-seconds N
+                     Kill a single codex exec after N seconds.
+                     Default: 300
   --no-synthesis     Skip final summary agent.
   -h, --help         Show help.
 
@@ -37,6 +42,23 @@ trim() {
     value="${value#"${value%%[![:space:]]*}"}"
     value="${value%"${value##*[![:space:]]}"}"
     printf '%s' "$value"
+}
+
+expand_target_list() {
+    local target=""
+    local -a expanded=()
+
+    for target in "$@"; do
+        if [[ -d "$target" ]]; then
+            while IFS= read -r file; do
+                expanded+=("$file")
+            done < <(find "$target" -type f | sort)
+        else
+            expanded+=("$target")
+        fi
+    done
+
+    printf '%s\n' "${expanded[@]}"
 }
 
 join_lines() {
@@ -81,6 +103,10 @@ build_common_prompt() {
     cat <<EOF
 Ты делаешь reviewer-only аудит документации репозитория.
 Ничего не меняй и не предлагай патчи; нужен только список findings.
+Это дочерний одиночный reviewer-run внутри внешнего launcher-а.
+Не используй repo-local skills, не запускай ./scripts/review-docs.sh, не
+запускай параллельные подагенты и не пытайся оркестрировать дополнительные
+review-сессии.
 
 Фокус ревью: $aspect
 $focus_text
@@ -111,6 +137,9 @@ build_summary_prompt() {
 
     cat <<EOF
 Ты собираешь итоговый отчет по нескольким параллельным ревью документации.
+Это дочерний synthesis-run внутри внешнего launcher-а.
+Не используй repo-local skills, не запускай ./scripts/review-docs.sh и не
+запускай дополнительные подагенты.
 
 Прочитай aspect-отчеты:
 $reports_block
@@ -148,7 +177,20 @@ run_aspect() {
 
     prompt="$(build_common_prompt "$aspect")"
 
-    cmd=(codex -a never exec -C "$REPO_ROOT" -s read-only --color never -o "$output_file")
+    cmd=(
+        timeout
+        "${TIMEOUT_SECONDS}s"
+        codex
+        -a never
+        exec
+        --skip-git-repo-check
+        -C "$EXEC_ROOT"
+        --add-dir "$REPO_ROOT"
+        -c "model_reasoning_effort=\"$REASONING_EFFORT\""
+        -s read-only
+        --color never
+        -o "$output_file"
+    )
     if [[ -n "$MODEL" ]]; then
         cmd+=(-m "$MODEL")
     fi
@@ -167,6 +209,12 @@ cd "$REPO_ROOT"
 
 command -v codex >/dev/null 2>&1 || die "codex is not available in PATH"
 
+EXEC_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/doc-review-codex-XXXXXX")"
+cleanup() {
+    rm -rf "$EXEC_ROOT"
+}
+trap cleanup EXIT
+
 declare -a TARGETS=()
 declare -a GOVERNANCE_PATHS=()
 declare -a REPORT_FILES=()
@@ -179,6 +227,8 @@ declare -a DEFAULT_ASPECTS=("gaps" "completeness" "contradictions" "consistency"
 MODEL=""
 OUT_DIR=""
 NO_SYNTHESIS=0
+REASONING_EFFORT="${DOC_REVIEW_REASONING_EFFORT:-medium}"
+TIMEOUT_SECONDS="${DOC_REVIEW_TIMEOUT_SECONDS:-300}"
 declare -a ASPECTS=("${DEFAULT_ASPECTS[@]}")
 
 while [[ $# -gt 0 ]]; do
@@ -196,6 +246,16 @@ while [[ $# -gt 0 ]]; do
         --model)
             [[ $# -ge 2 ]] || die "--model requires a value"
             MODEL="$2"
+            shift 2
+            ;;
+        --reasoning)
+            [[ $# -ge 2 ]] || die "--reasoning requires a value"
+            REASONING_EFFORT="$2"
+            shift 2
+            ;;
+        --timeout-seconds)
+            [[ $# -ge 2 ]] || die "--timeout-seconds requires a value"
+            TIMEOUT_SECONDS="$2"
             shift 2
             ;;
         --no-synthesis)
@@ -242,6 +302,16 @@ for idx in "${!ASPECTS[@]}"; do
     [[ -n "${ASPECTS[$idx]}" ]] || die "empty aspect in --aspects"
 done
 
+case "$REASONING_EFFORT" in
+    low|medium|high) ;;
+    *)
+        die "--reasoning must be one of: low, medium, high"
+        ;;
+esac
+
+[[ "$TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || die "--timeout-seconds must be a positive integer"
+[[ "$TIMEOUT_SECONDS" -ge 1 ]] || die "--timeout-seconds must be >= 1"
+
 for governance_path in \
     "AGENTS.md" \
     "README.md" \
@@ -258,7 +328,20 @@ done
 
 if [[ -z "$OUT_DIR" ]]; then
     OUT_DIR="$REPO_ROOT/.docvalidate/reviews/$(date +%Y%m%d-%H%M%S)"
+elif [[ "$OUT_DIR" != /* ]]; then
+    OUT_DIR="$REPO_ROOT/$OUT_DIR"
 fi
+
+mapfile -t TARGETS < <(expand_target_list "${TARGETS[@]}")
+[[ ${#TARGETS[@]} -gt 0 ]] || die "expanded target list is empty"
+
+for idx in "${!TARGETS[@]}"; do
+    TARGETS[$idx]="$(realpath -m "$REPO_ROOT/${TARGETS[$idx]}")"
+done
+
+for idx in "${!GOVERNANCE_PATHS[@]}"; do
+    GOVERNANCE_PATHS[$idx]="$(realpath -m "$REPO_ROOT/${GOVERNANCE_PATHS[$idx]}")"
+done
 
 mkdir -p "$OUT_DIR"
 
@@ -267,6 +350,8 @@ repo_root=$REPO_ROOT
 targets=$(printf '%s;' "${TARGETS[@]}")
 aspects=$(printf '%s;' "${ASPECTS[@]}")
 model=${MODEL:-default}
+reasoning=$REASONING_EFFORT
+timeout_seconds=$TIMEOUT_SECONDS
 EOF
 
 for aspect in "${ASPECTS[@]}"; do
@@ -292,7 +377,20 @@ if [[ "$NO_SYNTHESIS" -eq 0 ]]; then
     SUMMARY_PROMPT="$(build_summary_prompt)"
     declare -a SUMMARY_CMD
 
-    SUMMARY_CMD=(codex -a never exec -C "$REPO_ROOT" -s read-only --color never -o "$SUMMARY_FILE")
+    SUMMARY_CMD=(
+        timeout
+        "${TIMEOUT_SECONDS}s"
+        codex
+        -a never
+        exec
+        --skip-git-repo-check
+        -C "$EXEC_ROOT"
+        --add-dir "$REPO_ROOT"
+        -c "model_reasoning_effort=\"$REASONING_EFFORT\""
+        -s read-only
+        --color never
+        -o "$SUMMARY_FILE"
+    )
     if [[ -n "$MODEL" ]]; then
         SUMMARY_CMD+=(-m "$MODEL")
     fi

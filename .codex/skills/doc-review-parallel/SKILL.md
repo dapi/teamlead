@@ -48,6 +48,8 @@ description: Запускает параллельное ревью докуме
 - `--aspects gaps,contradictions`
 - `--out-dir .docvalidate/reviews/manual-run`
 - `--model gpt-5`
+- `--reasoning low`
+- `--timeout-seconds 180`
 - `--no-synthesis`
 
 ## Правила

@@ -49,3 +49,48 @@ else
     echo "  FAIL: init is idempotent"
     ((FAIL++)) || true
 fi
+
+NO_GIT_DIR="$(mktemp -d /tmp/ai-teamlead-init-no-git-XXXXXX)"
+NO_GIT_OUTPUT_FILE="$(mktemp /tmp/ai-teamlead-init-no-git-output-XXXXXX)"
+
+if (
+    cd "$NO_GIT_DIR"
+    "$AI_TEAMLEAD_BIN" init
+) >"$NO_GIT_OUTPUT_FILE" 2>&1; then
+    echo "  FAIL: init must fail outside git repository"
+    ((FAIL++)) || true
+else
+    echo "  PASS: init fails outside git repository"
+    ((PASS++)) || true
+fi
+
+if [[ -e "$NO_GIT_DIR/.ai-teamlead/settings.yml" ]]; then
+    echo "  FAIL: init must not create files outside git repository"
+    ((FAIL++)) || true
+else
+    echo "  PASS: init does not create files outside git repository"
+    ((PASS++)) || true
+fi
+
+NO_ORIGIN_REPO="$(mktemp -d /tmp/ai-teamlead-init-no-origin-XXXXXX)"
+git init -q "$NO_ORIGIN_REPO"
+NO_ORIGIN_OUTPUT_FILE="$(mktemp /tmp/ai-teamlead-init-no-origin-output-XXXXXX)"
+
+if (
+    cd "$NO_ORIGIN_REPO"
+    "$AI_TEAMLEAD_BIN" init
+) >"$NO_ORIGIN_OUTPUT_FILE" 2>&1; then
+    echo "  FAIL: init must fail when origin is missing"
+    ((FAIL++)) || true
+else
+    echo "  PASS: init fails when origin is missing"
+    ((PASS++)) || true
+fi
+
+if [[ -e "$NO_ORIGIN_REPO/.ai-teamlead/settings.yml" ]]; then
+    echo "  FAIL: init must not create files when origin is missing"
+    ((FAIL++)) || true
+else
+    echo "  PASS: init does not create files when origin is missing"
+    ((PASS++)) || true
+fi

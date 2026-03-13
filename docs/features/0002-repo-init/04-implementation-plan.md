@@ -18,7 +18,8 @@
    - `flows/issue-analysis-flow.md`
 5. Реализовать идемпотентную запись файлов без перезаписи.
 6. Добавить unit tests на path resolution и write-if-missing поведение.
-7. Добавить integration test на `ai-teamlead init` в тестовом git-репозитории.
+7. Добавить integration test на `ai-teamlead init` в тестовом git-репозитории с
+   настроенным GitHub `origin`.
 8. Синхронизировать `README` и связанные feature/ADR с итоговым контрактом.
 
 ## Критерий завершения

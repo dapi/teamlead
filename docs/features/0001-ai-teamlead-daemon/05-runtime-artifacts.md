@@ -158,6 +158,96 @@
 - какой launcher layout относится к этой сессии
 - можно ли повторно войти в связанную агентскую сессию
 
+## Цепочка launcher и resurrect-артефактов
+
+Для одной живой agent session в MVP существуют два разных слоя файлов:
+
+1. runtime-артефакты, которые создает `ai-teamlead`
+2. session snapshot-артефакты, которые создает сам `zellij`
+
+Их не нужно смешивать.
+
+### Таблица файлов
+
+| Файл | Кто создает | Где лежит | Для чего нужен |
+| --- | --- | --- | --- |
+| `launch-layout.kdl` | `ai-teamlead` | `.git/.ai-teamlead/sessions/<session_uuid>/` | входной layout для первого запуска `zellij`; описывает стартовый tab/pane |
+| `pane-entrypoint.sh` | `ai-teamlead` | `.git/.ai-teamlead/sessions/<session_uuid>/` | тонкий runtime-shim; переходит в repo root, выставляет `AI_TEAMLEAD_BIN` и вызывает versioned `./.ai-teamlead/launch-agent.sh <session_uuid> <issue_url>` |
+| `session.json` | `ai-teamlead` | `.git/.ai-teamlead/sessions/<session_uuid>/` | durable session-binding между issue, `session_uuid` и `zellij` identifiers |
+| `session-layout.kdl` | `zellij` | `~/.cache/zellij/contract_version_1/session_info/<session_name>/` | snapshot текущего layout сессии для восстановления; отражает уже итоговый `cwd` и tab structure |
+| `session-metadata.kdl` | `zellij` | `~/.cache/zellij/contract_version_1/session_info/<session_name>/` | snapshot метаданных pane/tab/session; содержит `terminal_command`, pane state, tab state и прочие runtime details |
+
+### Разница между `launch-layout.kdl` и `session-layout.kdl`
+
+`launch-layout.kdl`:
+
+- это то, что `ai-teamlead` подает в `zellij` на вход
+- описывает минимальный стартовый layout для создания новой session/tab/pane
+- ссылается на `pane-entrypoint.sh`
+
+`session-layout.kdl`:
+
+- это то, что `zellij` сам сохраняет после запуска
+- описывает уже текущее состояние сессии
+- может содержать другой `cwd`, чем был у стартового launcher
+- используется для механизма восстановления и introspection самой сессии
+
+### Разница между `pane-entrypoint.sh` и `terminal_command` в metadata
+
+`pane-entrypoint.sh`:
+
+- содержит реальные значения `session_uuid` и `issue_url`
+- является нашим runtime-generated shim для конкретного запуска
+- определяет, как именно начинается цепочка `launch-agent.sh`
+
+`terminal_command` в `session-metadata.kdl`:
+
+- это строка, которую `zellij` запомнил как команду текущей pane
+- обычно это запуск `bash <abs-path-to-pane-entrypoint.sh>`
+- эта metadata не обязана раскрывать дальше аргументы, которые уже зашиты в
+  сам `pane-entrypoint.sh`
+
+### Практическая цепочка запуска
+
+Для одной issue цепочка выглядит так:
+
+1. `ai-teamlead` создает `launch-layout.kdl`.
+2. `ai-teamlead` создает `pane-entrypoint.sh`.
+3. `zellij` стартует pane по `launch-layout.kdl`.
+4. pane запускает `pane-entrypoint.sh`.
+5. `pane-entrypoint.sh` вызывает versioned
+   `./.ai-teamlead/launch-agent.sh <session_uuid> <issue_url>`.
+6. `launch-agent.sh` готовит worktree и запускает реального агента.
+7. `zellij` сохраняет собственные snapshot-файлы:
+   - `session-layout.kdl`
+   - `session-metadata.kdl`
+
+## Исключенные артефакты
+
+Согласно [ADR-0013](../../adr/0013-agent-session-history-as-dialog-source.md),
+из обязательной runtime-модели MVP исключены:
+
+- `questions.json`
+- `analysis-plan.json`
+- `operator-events.jsonl`
+
+Источником истины по диалогу является история агентской сессии, а не отдельные
+JSON-файлы. Возвращение структурированных артефактов возможно в будущем как
+дополнительный слой поверх истории сессии.
+
+## Связанные решения
+
+- [ADR-0004](../../adr/0004-runtime-artifacts-in-git-dir.md) — runtime-артефакты
+  в `.git/`
+- [ADR-0008](../../adr/0008-bind-issue-to-agent-session-uuid.md) — привязка
+  issue к `session_uuid`
+- [ADR-0013](../../adr/0013-agent-session-history-as-dialog-source.md) — история
+  сессии как источник диалога
+- [ADR-0014](../../adr/0014-zellij-launch-context-naming.md) — naming convention
+  для `zellij` session/tab (определяет поля `zellij.*` в `session.json`)
+- [ADR-0015](../../adr/0015-versioned-launch-agent-contract.md) — versioned
+  launch-agent контракт
+
 ## Открытые вопросы
 
 - нужен ли отдельный файл `runtime.json` для агрегированного состояния daemon

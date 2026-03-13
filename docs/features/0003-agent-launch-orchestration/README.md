@@ -30,6 +30,18 @@ session/tab.
 
 - [03-how-we-verify.md](/home/danil/code/teamlead/docs/features/0003-agent-launch-orchestration/03-how-we-verify.md)
 
+## План реализации
+
+- [04-implementation-plan.md](/home/danil/code/teamlead/docs/features/0003-agent-launch-orchestration/04-implementation-plan.md)
+
+## Зависимости
+
+- [Feature 0001](../0001-ai-teamlead-daemon/README.md) — daemon предоставляет
+  `poll` и `run`, которые вызывают orchestration launch path
+- [Feature 0002](../0002-repo-init/README.md) — `init` создает
+  `./.ai-teamlead/launch-agent.sh` и `settings.yml`, которые использует
+  orchestration
+
 ## Связанные документы
 
 - [docs/issue-analysis-flow.md](/home/danil/code/teamlead/docs/issue-analysis-flow.md)

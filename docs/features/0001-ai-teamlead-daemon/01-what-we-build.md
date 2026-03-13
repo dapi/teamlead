@@ -50,7 +50,9 @@
 ## Вне scope
 
 - автоматическая реализация issue
-- создание ветки, worktree, коммитов и PR
+- создание ветки, worktree, коммитов и PR самим daemon (эта ответственность
+  делегирована project-local `launch-agent.sh`, см.
+  [Feature 0003](../0003-agent-launch-orchestration/README.md))
 - web UI
 - глобальный shared control plane для нескольких репозиториев
 - постоянная локальная база состояния issue

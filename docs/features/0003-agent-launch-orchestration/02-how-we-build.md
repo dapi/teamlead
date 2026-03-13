@@ -1,0 +1,194 @@
+# Feature 0003: Как строим
+
+## Архитектура
+
+Orchestration flow делится на две части:
+
+### 1. `ai-teamlead`
+
+Отвечает за:
+
+- выбор issue через `poll` или `run`
+- смену статуса issue в GitHub Project
+- генерацию `session_uuid`
+- создание или поиск нужного `zellij` session/tab
+- открытие новой pane
+- запуск versioned `./.ai-teamlead/launch-agent.sh`
+
+### 2. `./.ai-teamlead/launch-agent.sh`
+
+Отвечает за:
+
+- привязку текущей pane к `session_uuid`
+- создание или переиспользование branch/worktree
+- запуск `init.sh`, если это нужно проекту
+- запуск реального агента (`codex` или `claude`)
+- project-local правила по analysis branch/worktree lifecycle
+
+## Контракт launcher
+
+`launch-agent.sh`:
+
+- хранится в `./.ai-teamlead/launch-agent.sh`
+- является versioned project-local script
+- запускается из корня репозитория как `cwd`
+- принимает аргументы в таком порядке:
+  - `<session_uuid>`
+  - `<issue_url>`
+- должен сам подготовить analysis worktree до запуска реального агента
+- должен использовать naming/path templates из `./.ai-teamlead/settings.yml`
+
+`issue-analysis-flow`:
+
+- хранится как entrypoint в `./.ai-teamlead/flows/issue-analysis-flow.md`
+- внутри маршрутизирует агента на staged prompts в
+  `./.ai-teamlead/flows/issue-analysis/`
+- передается реальному агенту уже из `launch-agent.sh`
+
+## Zellij context
+
+В `settings.yml` фиксируются только stable names:
+
+- `zellij.session_name`
+- `zellij.tab_name`
+
+Bootstrap default:
+
+- `session_name = {repo_name}-ai-teamlead`
+- `tab_name = issue-analysis`
+
+Runtime правила:
+
+- если session с таким именем уже существует, используется она
+- если session отсутствует, `ai-teamlead` создает ее
+- если нужный tab существует, используется он
+- если нужного tab нет, `ai-teamlead` создает его
+- для каждого запуска issue-analysis открывается новая pane
+
+После старта pane:
+
+- `launch-agent.sh` вызывает
+  `ai-teamlead internal bind-zellij-pane <session_uuid>`
+- эта команда читает `ZELLIJ_PANE_ID`
+- `pane_id` дописывается в runtime state
+
+## Lifecycle `launch-agent.sh`
+
+Минимальный lifecycle первой версии:
+
+1. Принять `<session_uuid>` и `<issue_url>`.
+2. Вызвать `ai-teamlead internal bind-zellij-pane <session_uuid>`.
+3. Определить или создать analysis branch/worktree для issue.
+4. Перейти в корень analysis worktree.
+5. Запустить `./init.sh`, если он существует в worktree.
+6. Убедиться, что существует каталог versioned analysis-артефактов.
+7. Запустить реального агента с:
+   - `./.ai-teamlead/flows/issue-analysis-flow.md`
+   - URL issue
+
+Bootstrap default для первой версии:
+
+- если в окружении доступен `codex`, launcher стартует его интерактивно
+- если `codex` отсутствует, launcher оставляет пользователя в shell внутри
+  подготовленного analysis worktree
+
+Инварианты:
+
+- branch/worktree должны быть готовы до запуска `codex` или `claude`
+- каталог versioned analysis-артефактов должен существовать до старта агента
+- `issue-analysis-flow` не отвечает за эти git-операции
+- naming и пути берутся из `settings.yml`, а их применение остается
+  ответственностью `launch-agent.sh`
+
+## Corner cases
+
+### 1. Session с нужным именем уже существует
+
+Поведение:
+
+- использовать существующую session
+- не создавать вторую session с тем же semantic назначением
+
+### 2. Session была раньше, но сейчас отсутствует
+
+Поведение:
+
+- создать новую session с тем же `session_name`
+- считать это нормальным recreate, а не ошибкой
+
+### 3. Session resurrect-нулась после внешнего восстановления
+
+Поведение:
+
+- если она доступна по тому же `session_name`, считать ее валидной existing
+  session
+- не пытаться автоматически различать “живая” это session или “resurrected”
+  в первой версии
+
+### 4. Tab с нужным именем уже существует
+
+Поведение:
+
+- использовать этот tab как launch context
+- открывать новую pane внутри него
+
+### 5. Tab с нужным именем отсутствует
+
+Поведение:
+
+- создать tab с `tab_name = issue-analysis`
+
+### 6. Есть несколько tab с одинаковым именем
+
+Поведение:
+
+- это считается нештатным launcher state
+- первая версия не должна пытаться “угадывать”
+- запуск должен завершаться диагностической ошибкой
+
+## Технические решения
+
+- `poll` и `run` используют один и тот же launch path
+- `launch-agent.sh` не генерируется runtime-ом, а bootstrap-ится в проект
+- branch/worktree orchestration живет в `launch-agent.sh`, а не в `ai-teamlead`
+- `ai-teamlead` не передает `repo_root` аргументом; правильный repo context
+  задается через `cwd`
+- runtime может генерировать только технический shim `pane-entrypoint.sh` и
+  `launch-layout.kdl`, но не несет в них branch/worktree логику
+
+## Направление эволюции
+
+В MVP `ai-teamlead` сам содержит `zellij`-specific реализацию поиска или
+создания session/tab и открытия pane.
+
+При дальнейшем расширении под `tmux` и другие мультиплексоры эта логика должна
+быть вынесена в project-local shell boundary, например:
+
+- `./.ai-teamlead/find-or-create-launch-context.sh`
+
+Ожидаемая ответственность такого script-layer:
+
+- найти или создать launcher context по stable names
+- вернуть machine-readable runtime identifiers
+- скрыть multiplexer-specific команды от основного Rust-приложения
+
+То есть основной `ai-teamlead` должен эволюционировать в сторону абстракции
+launch context provider, а не в сторону вшитого знания о каждом мультиплексоре.
+
+## Конфигурация
+
+Минимально значимые поля для orchestration:
+
+```yaml
+zellij:
+  session_name: "{repo_name}-ai-teamlead"
+  tab_name: "issue-analysis"
+
+launch_agent:
+  analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
+  worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+  analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+```
+
+В bootstrap-реализации `session_name` должен материализоваться уже с реальным
+именем текущего репозитория.

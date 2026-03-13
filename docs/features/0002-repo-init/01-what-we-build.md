@@ -30,10 +30,20 @@ project-specific контракт, начинают появляться как 
 
 - `./.ai-teamlead/settings.yml`
 - `./.ai-teamlead/README.md`
+- `./.ai-teamlead/init.sh`
+- `./.ai-teamlead/launch-agent.sh`
 - `./.ai-teamlead/flows/issue-analysis-flow.md`
+- `./.ai-teamlead/flows/issue-analysis/`
+- `./.claude/README.md`
+- `./.codex/README.md`
 
 После этого репозиторий получает минимальный project-local контракт, который
 можно коммитить, ревьюить и настраивать под себя.
+
+Если в корне репозитория отсутствует `./init.sh`, дополнительно создается
+симлинк:
+
+- `./init.sh -> ./.ai-teamlead/init.sh`
 
 ## Scope
 
@@ -42,6 +52,7 @@ project-specific контракт, начинают появляться как 
 - команда `ai-teamlead init`
 - создание каталога `./.ai-teamlead/`
 - создание минимального набора versioned файлов
+- создание root-level симлинка `./init.sh`, если он отсутствует
 - идемпотентное поведение без перезаписи существующих файлов
 - вывод результата инициализации в stdout
 
@@ -58,6 +69,8 @@ project-specific контракт, начинают появляться как 
 - `init` работает только внутри git-репозитория
 - `init` требует настроенный `origin`, указывающий на GitHub-репозиторий
 - `init` создает только versioned project-local файлы
+- `init` может дополнительно создать симлинк `./init.sh`, если в корне
+  репозитория еще нет собственного `init.sh`
 - runtime state продолжает жить отдельно в `.git/.ai-teamlead/`
 - итоговые файлы должны быть пригодны для ручной донастройки владельцем
   репозитория

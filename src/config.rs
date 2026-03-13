@@ -10,6 +10,7 @@ pub struct Config {
     pub issue_analysis_flow: IssueAnalysisFlowConfig,
     pub runtime: RuntimeConfig,
     pub zellij: ZellijConfig,
+    pub launch_agent: LaunchAgentConfig,
 }
 
 impl Config {
@@ -57,6 +58,25 @@ impl Config {
             "zellij.tab_name must not be empty in {}",
             path.display()
         );
+        anyhow::ensure!(
+            !self.launch_agent.analysis_branch_template.trim().is_empty(),
+            "launch_agent.analysis_branch_template must not be empty in {}",
+            path.display()
+        );
+        anyhow::ensure!(
+            !self.launch_agent.worktree_root_template.trim().is_empty(),
+            "launch_agent.worktree_root_template must not be empty in {}",
+            path.display()
+        );
+        anyhow::ensure!(
+            !self
+                .launch_agent
+                .analysis_artifacts_dir_template
+                .trim()
+                .is_empty(),
+            "launch_agent.analysis_artifacts_dir_template must not be empty in {}",
+            path.display()
+        );
         Ok(())
     }
 }
@@ -93,6 +113,13 @@ pub struct ZellijConfig {
     pub tab_name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LaunchAgentConfig {
+    pub analysis_branch_template: String,
+    pub worktree_root_template: String,
+    pub analysis_artifacts_dir_template: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +146,11 @@ runtime:
 zellij:
   session_name: "ai-teamlead"
   tab_name: "issue-analysis"
+
+launch_agent:
+  analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
+  worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+  analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
 "#
     }
 
@@ -129,6 +161,10 @@ zellij:
         config.validate(&path).expect("config should validate");
         assert_eq!(config.github.project_id, "PVT_kwHNeaPOAUaljg");
         assert_eq!(config.runtime.max_parallel, 1);
+        assert_eq!(
+            config.launch_agent.worktree_root_template,
+            "${HOME}/worktrees/${REPO}/${BRANCH}"
+        );
     }
 
     #[test]

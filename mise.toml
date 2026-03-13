@@ -19,5 +19,5 @@ run = """
 cargo build --locked
 read -r ZELLIJ_TAG ZELLIJ_SHA256 < ZELLIJ_VERSION
 docker build -f Dockerfile.test --build-arg ZELLIJ_TAG=$ZELLIJ_TAG --build-arg ZELLIJ_SHA256=$ZELLIJ_SHA256 -t ai-teamlead-zellij-test .
-docker run --rm -v \"$PWD/target/debug/ai-teamlead:/test/bin/ai-teamlead:ro\" -v \"$PWD/tests/integration:/test/tests:ro\" ai-teamlead-zellij-test /test/tests/docker-test-runner.sh
+docker run --rm -v \"$PWD/target/debug/ai-teamlead:/test/bin/ai-teamlead:ro\" -v \"$PWD/tests/integration:/test/tests:ro\" -v \"$PWD/templates:/test/bin/templates:ro\" ai-teamlead-zellij-test /test/tests/docker-test-runner.sh
 """

@@ -11,12 +11,15 @@
 - daemon читает `./.ai-teamlead/settings.yml` из репозитория
 - daemon корректно определяет repo context
 - daemon выбирает только issues со статусом `Backlog`
-- при наличии нескольких backlog issues daemon выбирает минимальный issue number
+- при наличии нескольких backlog issues daemon выбирает верхнюю issue в порядке
+  GitHub Project
 - перед запуском flow issue переводится в `Analysis In Progress`
 - при ошибке смены статуса flow не стартует
 - daemon не использует локальную базу как источник истины по состоянию issue
 - daemon создает durable-связку между issue и `session_uuid`
 - launcher записывает `zellij.session_id`, `zellij.tab_id`, `zellij.pane_id`
+- `run` запускает нового агента в новой `zellij` pane
+- в агентский запуск передается URL GitHub issue
 
 ## Критерии готовности
 
@@ -44,7 +47,7 @@ Feature считается готовой к первому использова
 - в Project есть одна `open` issue со статусом `Backlog`
 - daemon выполняет polling
 - issue переводится в `Analysis In Progress`
-- flow запускается в настроенной `zellij` tab
+- flow запускается в новой pane внутри настроенной `zellij` session/tab
 
 ### Сценарий 2. Нет подходящих issues
 
@@ -66,21 +69,7 @@ Feature считается готовой к первому использова
 - пользователь явно запускает `run`
 - при выполнении правил входа issue возвращается в
   `Analysis In Progress`
-- flow стартует повторно
-
-### Сценарий 4a. `run` после новых ответов оператора
-
-- issue находится в `Waiting for Clarification`
-- в durable session-артефактах есть новый нормализованный ответ оператора
-- `run` допускает повторный запуск анализа
-
-### Сценарий 4b. `run` без новых данных
-
-- issue находится в `Waiting for Clarification`
-- в durable session-артефактах нет новых операторских данных после последнего
-  набора вопросов
-- `run` не запускает flow
-- причина отказа отражается в диагностике
+- в новой `zellij` pane стартует новый агентский запуск
 
 ### Сценарий 5. Два независимых репозитория
 
@@ -99,7 +88,7 @@ Feature считается готовой к первому использова
 ### Сценарий 6a. Несколько backlog issues
 
 - в `Backlog` есть несколько подходящих issues
-- daemon или `poll` выбирает issue с минимальным issue number
+- daemon или `poll` выбирает верхнюю issue в порядке GitHub Project
 
 ### Сценарий 7. Некорректный `run`
 
@@ -126,13 +115,14 @@ Feature считается готовой к первому использова
 - stdout/stderr foreground-процесса
 - сообщения ручных команд `poll` и `run`
 - диагностические артефакты в `.git/.ai-teamlead/`
-- session-артефакты, позволяющие восстановить вопросы, план и действия оператора
+- session-binding и launcher-артефакты, позволяющие найти связанную агентскую
+  сессию
 
 Для launcher дополнительно достаточно видеть:
 
 - `launch-layout.kdl`
-- `launch-agent.sh`
-- `capture.log`
+- `pane-entrypoint.sh`
+- `./.ai-teamlead/launch-agent.sh`
 
 ## Связанные документы
 

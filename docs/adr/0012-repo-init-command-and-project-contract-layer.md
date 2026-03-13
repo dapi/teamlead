@@ -40,7 +40,14 @@ Versioned project contract layer хранится в:
 
 - `./.ai-teamlead/settings.yml`
 - `./.ai-teamlead/README.md`
+- `./.ai-teamlead/init.sh`
+- `./.ai-teamlead/launch-agent.sh`
 - `./.ai-teamlead/flows/issue-analysis-flow.md`
+
+Если в корне репозитория отсутствует `./init.sh`, `init` дополнительно создает
+симлинк:
+
+- `./init.sh -> ./.ai-teamlead/init.sh`
 
 Ephemeral/runtime state не создается и не обслуживается командой `init`.
 Runtime-артефакты по-прежнему хранятся отдельно в:

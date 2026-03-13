@@ -13,7 +13,20 @@
 Текущие файлы:
 
 - `settings.yml` — repo-local конфиг `ai-teamlead`
+- `init.sh` — project-local bootstrap script для worktree
+- `launch-agent.sh` — project-local launcher script для issue-analysis session
 - `flows/issue-analysis-flow.md` — repo-local flow анализа issue
+- `flows/issue-analysis/` — staged prompts по трем осям анализа issue
+
+Project-local agent assets:
+
+- `.claude/` — assets для Claude-specific workflow
+- `.codex/` — project convention для Codex-specific assets
 
 Базовый системный контракт flow остается в документации `ai-teamlead`, а файлы
 в этом каталоге задают project-specific адаптацию.
+
+Если в корне репозитория отсутствует `./init.sh`, команда `ai-teamlead init`
+создает симлинк:
+
+- `./init.sh -> ./.ai-teamlead/init.sh`

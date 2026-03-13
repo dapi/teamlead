@@ -15,12 +15,16 @@
 4. Добавить встроенные шаблоны:
    - `settings.yml`
    - `README.md`
+   - `init.sh`
+   - `launch-agent.sh`
    - `flows/issue-analysis-flow.md`
-5. Реализовать идемпотентную запись файлов без перезаписи.
-6. Добавить unit tests на path resolution и write-if-missing поведение.
-7. Добавить integration test на `ai-teamlead init` в тестовом git-репозитории с
+5. Реализовать создание симлинка `./init.sh -> ./.ai-teamlead/init.sh`, только
+   если в корне нет собственного `init.sh`.
+6. Реализовать идемпотентную запись файлов без перезаписи.
+7. Добавить unit tests на path resolution и write-if-missing поведение.
+8. Добавить integration test на `ai-teamlead init` в тестовом git-репозитории с
    настроенным GitHub `origin`.
-8. Синхронизировать `README` и связанные feature/ADR с итоговым контрактом.
+9. Синхронизировать `README` и связанные feature/ADR с итоговым контрактом.
 
 ## Критерий завершения
 

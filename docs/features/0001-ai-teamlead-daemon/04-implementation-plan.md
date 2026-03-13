@@ -136,9 +136,9 @@
 1. создать layout директорий
 2. реализовать `session.json`
 3. реализовать `issues/<issue_number>.json`
-4. реализовать `questions.json`
-5. реализовать `analysis-plan.json`
-6. реализовать append-only `operator-events.jsonl`
+4. стабилизировать `session.json`
+5. стабилизировать `issues/<issue_number>.json`
+6. стабилизировать launcher-артефакты внутри `sessions/<session_uuid>/`
 
 Результат этапа:
 
@@ -156,7 +156,7 @@
 
 - daemon стартует в repo с `./.ai-teamlead/settings.yml`
 - `poll` берет issue из `Backlog`
-- при нескольких issues `poll` берет минимальный issue number
+- при нескольких issues `poll` берет верхнюю issue в порядке GitHub Project
 - `run` запускает допустимую issue
 - `run` не запускает issue из waiting-статуса без нужных session-артефактов
 - недопустимый `run` корректно отклоняется

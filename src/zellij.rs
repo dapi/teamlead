@@ -22,7 +22,7 @@ impl<'a> ZellijLauncher<'a> {
         repo_root: &Path,
         runtime: &RuntimeLayout,
         zellij: &ZellijConfig,
-        issue_number: u64,
+        issue_url: &str,
         session_uuid: &str,
         binary_path: &Path,
     ) -> Result<()> {
@@ -30,26 +30,20 @@ impl<'a> ZellijLauncher<'a> {
         fs::create_dir_all(&session_dir)
             .with_context(|| format!("failed to create {}", session_dir.display()))?;
 
-        let entrypoint_path = session_dir.join("launch-agent.sh");
+        let entrypoint_path = session_dir.join("pane-entrypoint.sh");
         let layout_path = session_dir.join("launch-layout.kdl");
-        let capture_log_path = session_dir.join("capture.log");
         let quoted_repo_root = shell_single_quote(repo_root.to_string_lossy().as_ref());
-        let quoted_binary = shell_single_quote(binary_path.to_string_lossy().as_ref());
+        let quoted_launch_agent = shell_single_quote("./.ai-teamlead/launch-agent.sh");
         let quoted_session_uuid = shell_single_quote(session_uuid);
-        let quoted_capture_log = shell_single_quote(capture_log_path.to_string_lossy().as_ref());
+        let quoted_issue_url = shell_single_quote(issue_url);
+        let quoted_binary = shell_single_quote(binary_path.to_string_lossy().as_ref());
 
         let entrypoint = format!(
             "#!/usr/bin/env bash\n\
 set -euo pipefail\n\
 cd {quoted_repo_root}\n\
-if ! {quoted_binary} internal capture-zellij-context {quoted_session_uuid} > {quoted_capture_log} 2>&1; then\n\
-  printf 'ai-teamlead: failed to capture zellij context, see capture.log\\n' >&2\n\
-fi\n\
-clear\n\
-printf 'ai-teamlead issue-analysis session\\n'\n\
-printf 'issue: #{issue_number}\\n'\n\
-printf 'session_uuid: {session_uuid}\\n\\n'\n\
-exec \"${{SHELL:-/bin/bash}}\" -l\n"
+export AI_TEAMLEAD_BIN={quoted_binary}\n\
+exec {quoted_launch_agent} {quoted_session_uuid} {quoted_issue_url}\n"
         );
         fs::write(&entrypoint_path, entrypoint)
             .with_context(|| format!("failed to write {}", entrypoint_path.display()))?;
@@ -72,7 +66,7 @@ exec \"${{SHELL:-/bin/bash}}\" -l\n"
         let layout = format!(
             "layout {{\n  tab name=\"{}\" {{\n    pane command=\"bash\" {{\n      args \"{}\"\n    }}\n  }}\n}}\n",
             escape_kdl_string(&zellij.tab_name),
-            escape_kdl_string(&format!("{}", entrypoint_path.display())),
+            escape_kdl_string(entrypoint_path.to_string_lossy().as_ref()),
         );
         fs::write(&layout_path, layout)
             .with_context(|| format!("failed to write {}", layout_path.display()))?;
@@ -227,7 +221,7 @@ fn escape_kdl_string(value: &str) -> String {
 mod tests {
     use std::cell::RefCell;
     use std::collections::BTreeMap;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     use anyhow::{Result, anyhow};
     use tempfile::tempdir;
@@ -323,9 +317,9 @@ mod tests {
                 &repo_root,
                 &runtime,
                 &zellij,
-                42,
+                "https://github.com/dapi/teamlead/issues/42",
                 "session-uuid",
-                &PathBuf::from("/tmp/ai-teamlead"),
+                Path::new("/tmp/ai-teamlead"),
             )
             .expect("launch should succeed");
 
@@ -342,7 +336,7 @@ mod tests {
         assert!(
             runtime
                 .session_dir("session-uuid")
-                .join("launch-agent.sh")
+                .join("pane-entrypoint.sh")
                 .exists()
         );
     }

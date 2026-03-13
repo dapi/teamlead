@@ -32,9 +32,8 @@
   sessions/
     <session_uuid>/
       session.json
-      questions.json
-      analysis-plan.json
-      operator-events.jsonl
+      launch-layout.kdl
+      pane-entrypoint.sh
   issues/
     <issue_number>.json
 ```
@@ -84,94 +83,26 @@
 - `completed`
 - `blocked`
 
-### `sessions/<session_uuid>/questions.json`
+### `sessions/<session_uuid>/launch-layout.kdl`
 
 Назначение:
 
-- последний опубликованный набор блокирующих вопросов
+- runtime-файл launcher для запуска нужной `zellij` tab
 
-Обязательные поля:
-
-```json
-{
-  "session_uuid": "uuid",
-  "issue_number": 123,
-  "revision": 1,
-  "generated_at": "2026-03-13T12:05:00Z",
-  "questions": [
-    {
-      "id": "q1",
-      "text": "..."
-    }
-  ]
-}
-```
-
-Если вопросы еще не задавались, файл может отсутствовать.
-
-### `sessions/<session_uuid>/analysis-plan.json`
+### `sessions/<session_uuid>/pane-entrypoint.sh`
 
 Назначение:
 
-- последний опубликованный пакет анализа и план
+- тонкий runtime-shim для запуска versioned `./.ai-teamlead/launch-agent.sh`
+  из корректного repo context
 
-Обязательные поля:
+Инварианты:
 
-```json
-{
-  "session_uuid": "uuid",
-  "issue_number": 123,
-  "revision": 1,
-  "generated_at": "2026-03-13T12:10:00Z",
-  "summary": "...",
-  "scope": ["..."],
-  "non_goals": ["..."],
-  "assumptions": ["..."],
-  "risks": ["..."],
-  "open_questions": ["..."],
-  "implementation_plan": ["..."],
-  "feature_story": "...",
-  "use_cases": ["..."]
-}
-```
-
-Правила:
-
-- для `bug` и `chore` поля `feature_story` и `use_cases` могут отсутствовать
-- для `feature` они обязательны
-
-Если план еще не публиковался, файл может отсутствовать.
-
-### `sessions/<session_uuid>/operator-events.jsonl`
-
-Назначение:
-
-- append-only журнал нормализованных действий оператора
-
-Формат:
-
-- одна JSON-запись на строку
-
-Минимальный формат записи:
-
-```json
-{
-  "timestamp": "2026-03-13T12:15:00Z",
-  "session_uuid": "uuid",
-  "issue_number": 123,
-  "event_type": "answers_submitted",
-  "payload": {
-    "source": "agent-session"
-  }
-}
-```
-
-Допустимые `event_type` в MVP:
-
-- `answers_submitted`
-- `plan_approved`
-- `plan_revision_requested`
-- `manual_retry_requested`
+- shim не несет branch/worktree логики
+- shim может передавать служебные переменные окружения, например путь к
+  бинарю `ai-teamlead`
+- orchestration flow по-прежнему определяется versioned
+  `./.ai-teamlead/launch-agent.sh`
 
 ### `issues/<issue_number>.json`
 
@@ -198,27 +129,25 @@
   должны противоречить друг другу
 - runtime-артефакты не являются source of truth по статусу issue в GitHub
 - runtime-артефакты являются source of truth для локального session-binding и
-  operator event trail
+  технических метаданных запуска
 
 ## Правила обновления
 
 - `session.json` создается при первом успешном claim
-- `questions.json` перезаписывается при публикации нового набора вопросов
-- `analysis-plan.json` перезаписывается при публикации нового пакета анализа
-- `operator-events.jsonl` только дописывается
 - `issues/<issue_number>.json` обновляется при каждом изменении session-binding
   или локально известного статуса flow
+- launcher layout и shim внутри `sessions/<session_uuid>/` могут
+  пересоздаваться при повторном запуске
 
 ## Правила чтения для `run`
 
 Команда `run` должна использовать runtime-артефакты так:
 
-- для `Waiting for Clarification` искать в `operator-events.jsonl` событие
-  `answers_submitted`, появившееся после последней ревизии `questions.json`
-- для `Waiting for Plan Review` искать в `operator-events.jsonl` событие
-  `plan_revision_requested`
-- для `Analysis Blocked` принимать явный ручной retry без дополнительных
-  operator events
+- для всех waiting-статусов и `Analysis Blocked` проверять наличие
+  существующего session-binding
+- использовать `session.json` для повторного входа в уже связанную агентскую
+  сессию
+- не пытаться восстанавливать диалог из отдельных JSON-артефактов
 
 ## Диагностическая ценность
 
@@ -226,14 +155,14 @@
 
 - какая агентская сессия связана с issue
 - в какой `zellij` panel она запущена
-- какие вопросы были последними
-- какой план был последним
-- какие действия оператора уже были зафиксированы
+- какой launcher layout относится к этой сессии
+- можно ли повторно войти в связанную агентскую сессию
 
 ## Открытые вопросы
 
 - нужен ли отдельный файл `runtime.json` для агрегированного состояния daemon
-- нужно ли хранить несколько ревизий вопросов и планов вместо only-last schema
+- нужен ли позднее отдельный слой structured artifacts поверх истории агентской
+  сессии
 
 ## Журнал изменений
 

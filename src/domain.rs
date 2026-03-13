@@ -11,10 +11,7 @@ pub fn select_next_backlog_issue<'a>(
     issues: &'a [IssueCandidate],
     statuses: &FlowStatuses,
 ) -> Option<&'a IssueCandidate> {
-    issues
-        .iter()
-        .filter(|issue| issue.status == statuses.backlog)
-        .min_by_key(|issue| issue.number)
+    issues.iter().find(|issue| issue.status == statuses.backlog)
 }
 
 pub fn select_next_backlog_project_item<'a>(
@@ -28,14 +25,7 @@ pub fn select_next_backlog_project_item<'a>(
         .filter(|item| item.matches_repo(owner, repo))
         .filter(|item| item.issue_state == "OPEN")
         .filter(|item| item.status_name.as_deref() == Some(statuses.backlog.as_str()))
-        .min_by_key(|item| item.issue_number)
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct RunSessionFacts {
-    pub has_new_answers: bool,
-    pub has_plan_revision_request: bool,
-    pub manual_retry_requested: bool,
+        .next()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,11 +34,7 @@ pub struct RunDecision {
     pub reason: &'static str,
 }
 
-pub fn can_run_analysis(
-    status: &str,
-    facts: RunSessionFacts,
-    statuses: &FlowStatuses,
-) -> RunDecision {
+pub fn can_run_analysis(status: &str, statuses: &FlowStatuses) -> RunDecision {
     if status == statuses.backlog {
         return RunDecision {
             allowed: true,
@@ -57,20 +43,20 @@ pub fn can_run_analysis(
     }
     if status == statuses.waiting_for_clarification {
         return RunDecision {
-            allowed: facts.has_new_answers,
-            reason: "waiting_for_clarification requires new operator answers",
+            allowed: true,
+            reason: "waiting_for_clarification may be resumed explicitly by operator",
         };
     }
     if status == statuses.waiting_for_plan_review {
         return RunDecision {
-            allowed: facts.has_plan_revision_request,
-            reason: "waiting_for_plan_review requires a plan revision request",
+            allowed: true,
+            reason: "waiting_for_plan_review may be reopened explicitly by operator",
         };
     }
     if status == statuses.analysis_blocked {
         return RunDecision {
-            allowed: facts.manual_retry_requested,
-            reason: "analysis_blocked requires manual retry",
+            allowed: true,
+            reason: "analysis_blocked may be retried explicitly by operator",
         };
     }
 
@@ -111,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn selects_backlog_issue_with_smallest_number() {
+    fn selects_first_backlog_issue_in_input_order() {
         let items = vec![
             IssueCandidate {
                 number: 42,
@@ -128,26 +114,24 @@ mod tests {
         ];
 
         let selected = select_next_backlog_issue(&items, &statuses()).expect("issue expected");
-        assert_eq!(selected.number, 7);
+        assert_eq!(selected.number, 42);
     }
 
     #[test]
     fn waiting_for_clarification_requires_new_answers() {
-        let denied = can_run_analysis(
-            "Waiting for Clarification",
-            RunSessionFacts::default(),
-            &statuses(),
-        );
-        assert!(!denied.allowed);
+        let allowed = can_run_analysis("Waiting for Clarification", &statuses());
+        assert!(allowed.allowed);
+    }
 
-        let allowed = can_run_analysis(
-            "Waiting for Clarification",
-            RunSessionFacts {
-                has_new_answers: true,
-                ..RunSessionFacts::default()
-            },
-            &statuses(),
-        );
+    #[test]
+    fn waiting_for_plan_review_allows_explicit_reopen() {
+        let allowed = can_run_analysis("Waiting for Plan Review", &statuses());
+        assert!(allowed.allowed);
+    }
+
+    #[test]
+    fn analysis_blocked_allows_explicit_retry() {
+        let allowed = can_run_analysis("Analysis Blocked", &statuses());
         assert!(allowed.allowed);
     }
 
@@ -180,6 +164,15 @@ mod tests {
                 repo_name: "teamlead".into(),
                 status_name: Some("Backlog".into()),
                 status_option_id: Some("2".into()),
+            },
+            ProjectIssueItem {
+                item_id: "item-3".into(),
+                issue_number: 5,
+                issue_state: "OPEN".into(),
+                repo_owner: "dapi".into(),
+                repo_name: "teamlead".into(),
+                status_name: Some("Backlog".into()),
+                status_option_id: Some("3".into()),
             },
         ];
 

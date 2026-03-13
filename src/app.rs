@@ -5,14 +5,12 @@ use clap::Parser;
 
 use crate::cli::{Cli, Command, InternalCommand};
 use crate::config::Config;
-use crate::domain::{
-    RunSessionFacts, can_run_analysis, parse_issue_ref, select_next_backlog_project_item,
-};
+use crate::domain::{can_run_analysis, parse_issue_ref, select_next_backlog_project_item};
 use crate::github::GhProjectClient;
 use crate::init::init_project_files;
 use crate::project_files::ProjectPaths;
 use crate::repo::RepoContext;
-use crate::runtime::{RuntimeLayout, derive_run_session_facts};
+use crate::runtime::RuntimeLayout;
 use crate::shell::{Shell, SystemShell};
 use crate::zellij::{ZellijLauncher, capture_current_binding};
 
@@ -107,12 +105,16 @@ fn run_poll(shell: &dyn Shell) -> Result<()> {
         &context.config.zellij,
         issue.issue_number,
     )?;
+    let issue_url = format!(
+        "https://github.com/{}/{}/issues/{}",
+        context.repo.github_owner, context.repo.github_repo, issue.issue_number
+    );
     let binary_path = std::env::current_exe().context("failed to resolve ai-teamlead binary")?;
     if let Err(error) = zellij.launch_issue_analysis(
         &context.repo.repo_root,
         &context.runtime,
         &context.config.zellij,
-        issue.issue_number,
+        &issue_url,
         &manifest.session_uuid,
         &binary_path,
     ) {
@@ -170,33 +172,7 @@ fn run_manual_run(shell: &dyn Shell, issue_ref: &str) -> Result<()> {
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("issue #{issue_number} does not have a project status"))?;
 
-    let session_facts = if current_status == context.config.issue_analysis_flow.statuses.backlog {
-        RunSessionFacts::default()
-    } else {
-        let issue_index = context
-            .runtime
-            .load_issue_index(issue_number)?
-            .ok_or_else(|| {
-                anyhow::anyhow!("missing issue session index for issue #{issue_number}")
-            })?;
-        let manifest = context
-            .runtime
-            .load_session_manifest(&issue_index.session_uuid)?
-            .ok_or_else(|| anyhow::anyhow!("missing session manifest for issue #{issue_number}"))?;
-        let questions = context.runtime.load_question_set(&manifest.session_uuid)?;
-        let plan = context.runtime.load_analysis_plan(&manifest.session_uuid)?;
-        let events = context
-            .runtime
-            .load_operator_events(&manifest.session_uuid)?;
-
-        derive_run_session_facts(current_status, questions.as_ref(), plan.as_ref(), &events)?
-    };
-
-    let allowed = can_run_analysis(
-        current_status,
-        session_facts,
-        &context.config.issue_analysis_flow.statuses,
-    );
+    let allowed = can_run_analysis(current_status, &context.config.issue_analysis_flow.statuses);
     if !allowed.allowed {
         bail!("run denied for issue #{issue_number}: {}", allowed.reason);
     }
@@ -223,6 +199,13 @@ fn run_manual_run(shell: &dyn Shell, issue_ref: &str) -> Result<()> {
             issue_number,
         )?
     } else {
+        let issue_index = issue_index.ok_or_else(|| {
+            anyhow::anyhow!("missing issue session index for issue #{issue_number}")
+        })?;
+        let _manifest = context
+            .runtime
+            .load_session_manifest(&issue_index.session_uuid)?
+            .ok_or_else(|| anyhow::anyhow!("missing session manifest for issue #{issue_number}"))?;
         github.update_status(
             &context.repo.repo_root,
             &context.config.github.project_id,
@@ -244,21 +227,22 @@ fn run_manual_run(shell: &dyn Shell, issue_ref: &str) -> Result<()> {
                 .statuses
                 .analysis_in_progress,
         )?;
-        let issue_index = issue_index.ok_or_else(|| {
-            anyhow::anyhow!("missing issue session index for issue #{issue_number}")
-        })?;
         context
             .runtime
             .load_session_manifest(&issue_index.session_uuid)?
             .ok_or_else(|| anyhow::anyhow!("missing session manifest for issue #{issue_number}"))?
     };
 
+    let issue_url = format!(
+        "https://github.com/{}/{}/issues/{}",
+        context.repo.github_owner, context.repo.github_repo, issue_number
+    );
     let binary_path = std::env::current_exe().context("failed to resolve ai-teamlead binary")?;
     zellij.launch_issue_analysis(
         &context.repo.repo_root,
         &context.runtime,
         &context.config.zellij,
-        issue_number,
+        &issue_url,
         &manifest.session_uuid,
         &binary_path,
     )?;
@@ -272,16 +256,19 @@ fn run_manual_run(shell: &dyn Shell, issue_ref: &str) -> Result<()> {
 
 fn run_internal(shell: &dyn Shell, internal: InternalCommand) -> Result<()> {
     match internal {
-        InternalCommand::CaptureZellijContext { session_uuid } => {
-            run_internal_capture_zellij_context(shell, &session_uuid)
+        InternalCommand::BindZellijPane { session_uuid } => {
+            run_internal_bind_zellij_pane(shell, &session_uuid)
         }
         InternalCommand::LaunchZellijFixture { issue } => {
             run_internal_launch_zellij_fixture(shell, issue)
         }
+        InternalCommand::RenderLaunchAgentContext { issue } => {
+            run_internal_render_launch_agent_context(shell, &issue)
+        }
     }
 }
 
-fn run_internal_capture_zellij_context(shell: &dyn Shell, session_uuid: &str) -> Result<()> {
+fn run_internal_bind_zellij_pane(shell: &dyn Shell, session_uuid: &str) -> Result<()> {
     let context = load_execution_context(shell)?;
     let (session_id, tab_id, pane_id) = capture_current_binding(
         shell,
@@ -291,7 +278,7 @@ fn run_internal_capture_zellij_context(shell: &dyn Shell, session_uuid: &str) ->
         session_uuid,
     )?;
     println!(
-        "captured zellij context: session_uuid={} session_id={} tab_id={} pane_id={}",
+        "bound zellij pane: session_uuid={} session_id={} tab_id={} pane_id={}",
         session_uuid, session_id, tab_id, pane_id
     );
     Ok(())
@@ -306,18 +293,42 @@ fn run_internal_launch_zellij_fixture(shell: &dyn Shell, issue_number: u64) -> R
         issue_number,
     )?;
     let zellij = ZellijLauncher::new(shell);
+    let issue_url = format!(
+        "https://github.com/{}/{}/issues/{}",
+        context.repo.github_owner, context.repo.github_repo, issue_number
+    );
     let binary_path = std::env::current_exe().context("failed to resolve ai-teamlead binary")?;
     zellij.launch_issue_analysis(
         &context.repo.repo_root,
         &context.runtime,
         &context.config.zellij,
-        issue_number,
+        &issue_url,
         &manifest.session_uuid,
         &binary_path,
     )?;
     println!(
         "fixture launch requested: issue=#{issue_number} session_uuid={}",
         manifest.session_uuid
+    );
+    Ok(())
+}
+
+fn run_internal_render_launch_agent_context(shell: &dyn Shell, issue_ref: &str) -> Result<()> {
+    let context = load_execution_context(shell)?;
+    let issue_number = parse_issue_ref(issue_ref)
+        .with_context(|| format!("failed to parse issue reference: {issue_ref}"))?;
+    let rendered = render_launch_agent_context(&context, issue_number)?;
+
+    println!(
+        "ISSUE_NUMBER={}",
+        shell_quote(&rendered.issue_number.to_string())
+    );
+    println!("REPO={}", shell_quote(&rendered.repo_name));
+    println!("BRANCH={}", shell_quote(&rendered.analysis_branch));
+    println!("WORKTREE_ROOT={}", shell_quote(&rendered.worktree_root));
+    println!(
+        "ANALYSIS_ARTIFACTS_DIR={}",
+        shell_quote(&rendered.analysis_artifacts_dir)
     );
     Ok(())
 }
@@ -344,4 +355,106 @@ fn load_execution_context_at(shell: &dyn Shell, cwd: PathBuf) -> Result<Executio
         config,
         runtime,
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LaunchAgentContext {
+    issue_number: u64,
+    repo_name: String,
+    analysis_branch: String,
+    worktree_root: String,
+    analysis_artifacts_dir: String,
+}
+
+fn render_launch_agent_context(
+    context: &ExecutionContext,
+    issue_number: u64,
+) -> Result<LaunchAgentContext> {
+    let repo_name = context.repo.github_repo.clone();
+    let home = std::env::var("HOME").context("HOME is not set")?;
+    let issue_number_str = issue_number.to_string();
+
+    let analysis_branch = render_template(
+        &context.config.launch_agent.analysis_branch_template,
+        &[
+            ("HOME", home.as_str()),
+            ("REPO", repo_name.as_str()),
+            ("ISSUE_NUMBER", issue_number_str.as_str()),
+        ],
+    );
+    let worktree_root = render_template(
+        &context.config.launch_agent.worktree_root_template,
+        &[
+            ("HOME", home.as_str()),
+            ("REPO", repo_name.as_str()),
+            ("ISSUE_NUMBER", issue_number_str.as_str()),
+            ("BRANCH", analysis_branch.as_str()),
+        ],
+    );
+    let analysis_artifacts_dir = render_template(
+        &context.config.launch_agent.analysis_artifacts_dir_template,
+        &[
+            ("HOME", home.as_str()),
+            ("REPO", repo_name.as_str()),
+            ("ISSUE_NUMBER", issue_number_str.as_str()),
+            ("BRANCH", analysis_branch.as_str()),
+        ],
+    );
+
+    Ok(LaunchAgentContext {
+        issue_number,
+        repo_name,
+        analysis_branch,
+        worktree_root,
+        analysis_artifacts_dir,
+    })
+}
+
+fn render_template(template: &str, variables: &[(&str, &str)]) -> String {
+    let mut rendered = template.to_string();
+    for (key, value) in variables {
+        rendered = rendered.replace(&format!("${{{key}}}"), value);
+    }
+    rendered
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+#[cfg(test)]
+mod launch_agent_tests {
+    use super::{LaunchAgentContext, render_template};
+
+    #[test]
+    fn renders_launch_agent_templates() {
+        let branch = render_template(
+            "analysis/issue-${ISSUE_NUMBER}",
+            &[("ISSUE_NUMBER", "42"), ("REPO", "teamlead")],
+        );
+        let worktree = render_template(
+            "${HOME}/worktrees/${REPO}/${BRANCH}",
+            &[
+                ("HOME", "/home/danil"),
+                ("REPO", "teamlead"),
+                ("BRANCH", &branch),
+            ],
+        );
+        let artifacts = render_template("specs/issues/${ISSUE_NUMBER}", &[("ISSUE_NUMBER", "42")]);
+
+        let context = LaunchAgentContext {
+            issue_number: 42,
+            repo_name: "teamlead".into(),
+            analysis_branch: branch,
+            worktree_root: worktree,
+            analysis_artifacts_dir: artifacts,
+        };
+
+        assert_eq!(context.analysis_branch, "analysis/issue-42");
+        assert_eq!(
+            context.worktree_root,
+            "/home/danil/worktrees/teamlead/analysis/issue-42"
+        );
+        assert_eq!(context.analysis_artifacts_dir, "specs/issues/42");
+    }
 }

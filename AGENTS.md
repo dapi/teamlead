@@ -20,6 +20,16 @@
 - Существенные изменения flow сначала фиксируются в SSOT, и только потом
   реализуются в коде.
 
+## Project-Local Agent Assets
+
+- `.ai-teamlead/` содержит project-local flow, launcher и repo-local контракты
+  самого `ai-teamlead`.
+- `.claude/` используется для Claude-specific project assets.
+- `.codex/` используется в этом проекте как repo-level convention для
+  Codex-specific assets.
+- `AGENTS.md` остается основным repo-level instruction contract для Codex и не
+  заменяется каталогом `.codex/`.
+
 ## Структура документации
 
 - Значимые фичи и подсистемы должны документироваться по трем осям:

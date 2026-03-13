@@ -14,12 +14,38 @@ OUTPUT="$(
 
 SETTINGS_FILE="$REPO_ROOT/.ai-teamlead/settings.yml"
 README_FILE="$REPO_ROOT/.ai-teamlead/README.md"
+PROJECT_INIT_FILE="$REPO_ROOT/.ai-teamlead/init.sh"
+LAUNCH_AGENT_FILE="$REPO_ROOT/.ai-teamlead/launch-agent.sh"
 FLOW_FILE="$REPO_ROOT/.ai-teamlead/flows/issue-analysis-flow.md"
+FLOW_README_FILE="$REPO_ROOT/.ai-teamlead/flows/issue-analysis/README.md"
+FLOW_WHAT_FILE="$REPO_ROOT/.ai-teamlead/flows/issue-analysis/01-what-we-build.md"
+FLOW_HOW_FILE="$REPO_ROOT/.ai-teamlead/flows/issue-analysis/02-how-we-build.md"
+FLOW_VERIFY_FILE="$REPO_ROOT/.ai-teamlead/flows/issue-analysis/03-how-we-verify.md"
+CLAUDE_README_FILE="$REPO_ROOT/.claude/README.md"
+CODEX_README_FILE="$REPO_ROOT/.codex/README.md"
+ROOT_INIT_LINK="$REPO_ROOT/init.sh"
 RUNTIME_DIR="$REPO_ROOT/.git/.ai-teamlead"
 
 assert_file_exists "$SETTINGS_FILE" "init created settings.yml"
 assert_file_exists "$README_FILE" "init created .ai-teamlead README"
+assert_file_exists "$PROJECT_INIT_FILE" "init created project-local init.sh"
+assert_file_exists "$LAUNCH_AGENT_FILE" "init created project-local launch-agent.sh"
 assert_file_exists "$FLOW_FILE" "init created issue-analysis-flow.md"
+assert_file_exists "$FLOW_README_FILE" "init created issue-analysis staged README"
+assert_file_exists "$FLOW_WHAT_FILE" "init created issue-analysis stage 1"
+assert_file_exists "$FLOW_HOW_FILE" "init created issue-analysis stage 2"
+assert_file_exists "$FLOW_VERIFY_FILE" "init created issue-analysis stage 3"
+assert_file_exists "$CLAUDE_README_FILE" "init created .claude README"
+assert_file_exists "$CODEX_README_FILE" "init created .codex README"
+assert_file_exists "$ROOT_INIT_LINK" "init created root init.sh symlink"
+
+if [[ -L "$ROOT_INIT_LINK" ]] && [[ "$(readlink "$ROOT_INIT_LINK")" == ".ai-teamlead/init.sh" ]]; then
+    echo "  PASS: init created expected root init.sh symlink"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init created expected root init.sh symlink"
+    ((FAIL++)) || true
+fi
 
 if [[ -d "$RUNTIME_DIR" ]]; then
     echo "  FAIL: init must not create runtime directory"
@@ -29,7 +55,7 @@ else
     ((PASS++)) || true
 fi
 
-if [[ "$OUTPUT" == *"created: $SETTINGS_FILE"* ]] && [[ "$OUTPUT" == *"created: $README_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_FILE"* ]]; then
+if [[ "$OUTPUT" == *"created: $SETTINGS_FILE"* ]] && [[ "$OUTPUT" == *"created: $README_FILE"* ]] && [[ "$OUTPUT" == *"created: $PROJECT_INIT_FILE"* ]] && [[ "$OUTPUT" == *"created: $LAUNCH_AGENT_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_README_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_WHAT_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_HOW_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_VERIFY_FILE"* ]] && [[ "$OUTPUT" == *"created: $CLAUDE_README_FILE"* ]] && [[ "$OUTPUT" == *"created: $CODEX_README_FILE"* ]] && [[ "$OUTPUT" == *"created: $ROOT_INIT_LINK"* ]]; then
     echo "  PASS: init reports created files"
     ((PASS++)) || true
 else
@@ -42,7 +68,7 @@ SECOND_OUTPUT="$(
     "$AI_TEAMLEAD_BIN" init
 )"
 
-if [[ "$SECOND_OUTPUT" == *"skipped: $SETTINGS_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_FILE"* ]]; then
+if [[ "$SECOND_OUTPUT" == *"skipped: $SETTINGS_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $PROJECT_INIT_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $LAUNCH_AGENT_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_WHAT_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_HOW_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_VERIFY_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $CLAUDE_README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $CODEX_README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $ROOT_INIT_LINK"* ]]; then
     echo "  PASS: init is idempotent"
     ((PASS++)) || true
 else
@@ -92,5 +118,24 @@ if [[ -e "$NO_ORIGIN_REPO/.ai-teamlead/settings.yml" ]]; then
     ((FAIL++)) || true
 else
     echo "  PASS: init does not create files when origin is missing"
+    ((PASS++)) || true
+fi
+
+EXISTING_INIT_REPO="$(mktemp -d /tmp/ai-teamlead-init-existing-init-XXXXXX)"
+git init -q "$EXISTING_INIT_REPO"
+git -C "$EXISTING_INIT_REPO" remote add origin git@github.com:dapi/example.git
+printf '#!/usr/bin/env bash\necho custom\n' > "$EXISTING_INIT_REPO/init.sh"
+chmod +x "$EXISTING_INIT_REPO/init.sh"
+
+(
+    cd "$EXISTING_INIT_REPO"
+    "$AI_TEAMLEAD_BIN" init >/dev/null
+)
+
+if [[ -L "$EXISTING_INIT_REPO/init.sh" ]]; then
+    echo "  FAIL: init must not replace existing root init.sh with symlink"
+    ((FAIL++)) || true
+else
+    echo "  PASS: init does not replace existing root init.sh"
     ((PASS++)) || true
 fi

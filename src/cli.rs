@@ -25,6 +25,7 @@ pub enum Command {
 
 #[derive(Debug, Subcommand)]
 pub enum InternalCommand {
-    CaptureZellijContext { session_uuid: String },
+    BindZellijPane { session_uuid: String },
     LaunchZellijFixture { issue: u64 },
+    RenderLaunchAgentContext { issue: String },
 }

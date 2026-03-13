@@ -42,6 +42,31 @@ assert_file_exists() {
     fi
 }
 
+assert_dir_exists() {
+    local path="$1" msg="$2"
+    if [[ -d "$path" ]]; then
+        echo "  PASS: $msg"
+        ((PASS++)) || true
+    else
+        echo "  FAIL: $msg"
+        echo "    missing directory: $path"
+        ((FAIL++)) || true
+    fi
+}
+
+assert_file_contains() {
+    local path="$1" pattern="$2" msg="$3"
+    if [[ -f "$path" ]] && grep -Fq "$pattern" "$path"; then
+        echo "  PASS: $msg"
+        ((PASS++)) || true
+    else
+        echo "  FAIL: $msg"
+        echo "    missing pattern: $pattern"
+        echo "    file: $path"
+        ((FAIL++)) || true
+    fi
+}
+
 assert_session_alive() {
     local session_name="$1" msg="$2"
     if zellij list-sessions --short 2>/dev/null | grep -Fxq "$session_name"; then
@@ -59,6 +84,19 @@ wait_for_file() {
     local deadline=$((SECONDS + timeout_seconds))
     while (( SECONDS < deadline )); do
         if [[ -f "$path" ]]; then
+            return 0
+        fi
+        sleep 0.2
+    done
+    return 1
+}
+
+wait_for_dir() {
+    local path="$1"
+    local timeout_seconds="${2:-$ZELLIJ_TEST_TIMEOUT}"
+    local deadline=$((SECONDS + timeout_seconds))
+    while (( SECONDS < deadline )); do
+        if [[ -d "$path" ]]; then
             return 0
         fi
         sleep 0.2
@@ -109,11 +147,141 @@ runtime:
 zellij:
   session_name: "ai-teamlead-test"
   tab_name: "issue-analysis"
+
+launch_agent:
+  analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
+  worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+  analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+EOF
+    cat > "$repo_root/.ai-teamlead/launch-agent.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+SESSION_UUID="${1:?usage: launch-agent.sh <session_uuid> <issue_url>}"
+ISSUE_URL="${2:?usage: launch-agent.sh <session_uuid> <issue_url>}"
+export ISSUE_URL
+LOG_FILE="./.git/.ai-teamlead/launch-helper.log"
+MARKER_FILE="./.git/.ai-teamlead/launch-helper.started"
+
+printf 'started\n' >"$MARKER_FILE"
+
+{
+    printf 'launch-helper: session_uuid=%s\n' "$SESSION_UUID"
+    printf 'launch-helper: issue_url=%s\n' "$ISSUE_URL"
+    printf 'launch-helper: ai_teamlead_bin=%s\n' "${AI_TEAMLEAD_BIN:-ai-teamlead}"
+    printf 'launch-helper: pane_id=%s\n' "${ZELLIJ_PANE_ID:-unset}"
+    "${AI_TEAMLEAD_BIN:-ai-teamlead}" internal bind-zellij-pane "$SESSION_UUID"
+} >>"$LOG_FILE" 2>&1
+exec "${SHELL:-/bin/bash}" -l
+EOF
+    chmod +x "$repo_root/.ai-teamlead/launch-agent.sh"
+    mkdir -p "$repo_root/.ai-teamlead/flows"
+    cat > "$repo_root/.ai-teamlead/flows/issue-analysis-flow.md" <<'EOF'
+# issue-analysis-flow fixture
 EOF
 }
 
+create_initialized_repo() {
+    local repo_root="$1"
+    local ai_teamlead_bin="${2:-/test/bin/ai-teamlead}"
+
+    git init -q -b main "$repo_root"
+    git -C "$repo_root" remote add origin git@github.com:dapi/example.git
+    git -C "$repo_root" config user.name "AI Teamlead Test"
+    git -C "$repo_root" config user.email "ai-teamlead@example.com"
+    printf '# integration fixture\n' > "$repo_root/README.md"
+    git -C "$repo_root" add README.md
+    git -C "$repo_root" commit -q -m "initial"
+
+    (
+        cd "$repo_root"
+        "$ai_teamlead_bin" init >/dev/null
+        git add .ai-teamlead .claude .codex init.sh
+        git commit -q -m "bootstrap ai-teamlead"
+    )
+}
+
+install_gh_stub() {
+    local bin_dir="$1" snapshot_file="$2" log_file="$3"
+    mkdir -p "$bin_dir"
+    cat > "$bin_dir/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG_FILE="${AI_TEAMLEAD_TEST_GH_LOG:?}"
+SNAPSHOT_FILE="${AI_TEAMLEAD_TEST_GH_SNAPSHOT:?}"
+ARGS="$*"
+printf 'gh %s\n' "$ARGS" >> "$LOG_FILE"
+
+if [[ "${1:-}" == "repo" && "${2:-}" == "view" ]]; then
+    printf 'main\n'
+    exit 0
+fi
+
+if [[ "$ARGS" == *"updateProjectV2ItemFieldValue"* ]]; then
+    printf '{"data":{"updateProjectV2ItemFieldValue":{"projectV2Item":{"id":"updated-item"}}}}\n'
+    exit 0
+fi
+
+cat "$SNAPSHOT_FILE"
+EOF
+    chmod +x "$bin_dir/gh"
+    export AI_TEAMLEAD_TEST_GH_SNAPSHOT="$snapshot_file"
+    export AI_TEAMLEAD_TEST_GH_LOG="$log_file"
+}
+
+install_agent_stubs() {
+    local bin_dir="$1" out_dir="$2"
+    mkdir -p "$bin_dir" "$out_dir"
+    cat > "$bin_dir/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+OUT_DIR="${AI_TEAMLEAD_STUB_OUT_DIR:?}"
+TARGET_CD=""
+PROMPT=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --cd)
+            TARGET_CD="$2"
+            shift 2
+            ;;
+        --no-alt-screen)
+            shift
+            ;;
+        *)
+            PROMPT="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -n "$TARGET_CD" ]]; then
+    cd "$TARGET_CD"
+fi
+
+printf 'invoked\n' > "$OUT_DIR/codex.invoked"
+printf '%s\n' "$PWD" > "$OUT_DIR/codex.cwd"
+printf '%s\n' "${AI_TEAMLEAD_ISSUE_URL:-}" > "$OUT_DIR/issue_url"
+printf '%s\n' "${AI_TEAMLEAD_SESSION_UUID:-}" > "$OUT_DIR/session_uuid"
+printf '%s\n' "${AI_TEAMLEAD_ANALYSIS_BRANCH:-}" > "$OUT_DIR/analysis_branch"
+printf '%s\n' "${AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR:-}" > "$OUT_DIR/analysis_artifacts_dir"
+printf '%s\n' "${AI_TEAMLEAD_WORKTREE_ROOT:-}" > "$OUT_DIR/worktree_root"
+printf '%s\n' "$PROMPT" > "$OUT_DIR/prompt.txt"
+
+sleep "${AI_TEAMLEAD_STUB_AGENT_SLEEP:-5}"
+EOF
+    chmod +x "$bin_dir/codex"
+    ln -sf codex "$bin_dir/claude"
+    export AI_TEAMLEAD_STUB_OUT_DIR="$out_dir"
+}
+
 cleanup_zellij() {
-    zellij kill-session ai-teamlead-test >/dev/null 2>&1 || true
+    while IFS= read -r session_name; do
+        [[ -n "$session_name" ]] || continue
+        zellij kill-session "$session_name" >/dev/null 2>&1 || true
+    done < <(zellij list-sessions --short 2>/dev/null || true)
 }
 
 print_summary() {

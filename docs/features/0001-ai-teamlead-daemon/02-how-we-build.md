@@ -102,6 +102,14 @@ zellij:
   tab_name: "issue-analysis"
 ```
 
+Здесь:
+
+- `session_name` и `tab_name` это стабильные project-local идентификаторы для
+  bootstrap и orchestration
+- runtime `session_id`, `tab_id`, `pane_id` не задаются в конфиге
+- `ai-teamlead` во время запуска должен либо найти существующие session/tab по
+  этим именам, либо создать их
+
 ## Ограничения реализации
 
 - пока не проектируем отдельный supervisor model
@@ -131,8 +139,7 @@ Repo-local runtime-артефакты daemon хранятся в:
 Для `zellij` launcher дополнительно создаются:
 
 - `launch-layout.kdl`
-- `launch-agent.sh`
-- `capture.log`
+- `pane-entrypoint.sh`
 
 Точная схема файлов и полей вынесена в:
 
@@ -155,8 +162,8 @@ Repo-local runtime-артефакты daemon хранятся в:
 - команда выбирает только issue со статусом `Backlog`
 - команда не принимает issue как аргумент
 - команда не должна брать больше `runtime.max_parallel` issues за цикл
-- при наличии нескольких подходящих issues команда выбирает минимальный issue
-  number
+- при наличии нескольких подходящих issues команда выбирает верхнюю issue в
+  порядке GitHub Project
 
 ### `run`
 
@@ -170,18 +177,30 @@ Repo-local runtime-артефакты daemon хранятся в:
 - команда работает в контексте текущего репозитория
 - команда использует те же правила допустимых статусов, что и SSOT
 - команда не должна обходить правила transition model
-- для waiting-статусов команда опирается на durable session-артефакты, а не на
-  эвристику по текущему процессу
+- команда запускает нового агента в новой `zellij` pane
+- в запуск агента передается project-local `issue-analysis-flow`
+- в запуск агента передается URL GitHub issue
+- `poll` после claim использует тот же запуск, что и `run`
 
 ## Launcher
 
 `zellij` launcher работает так:
 
-- создает `launch-layout.kdl` и `launch-agent.sh` в session-директории
+- создает `launch-layout.kdl` и тонкий `pane-entrypoint.sh` в session-директории
 - если zellij session еще не существует, запускает новую session через
   `zellij --session <name> -n <layout>`
 - если session уже существует, добавляет tab через
   `zellij --session <name> --layout <layout>`
-- стартовый скрипт внутри pane вызывает внутреннюю команду
-  `capture-zellij-context`, которая записывает `session_id`, `tab_id`,
-  `pane_id` в `session.json`
+- launcher создает новую pane для конкретного запуска issue-analysis
+- `pane-entrypoint.sh` только задает repo context и передает путь к бинарю
+  `ai-teamlead`
+- через этот shim launcher запускает versioned
+  `./.ai-teamlead/launch-agent.sh` в новой pane
+- `launch-agent.sh` должен запускаться из корня репозитория как `cwd`
+- сам `launch-agent.sh` вызывает внутреннюю команду `bind-zellij-pane`,
+  готовит analysis worktree и после этого стартует настроенного агента
+  (`codex` или `claude`) с project-local `issue-analysis-flow` и URL issue
+- минимальный launcher input для агента:
+  - `./.ai-teamlead/flows/issue-analysis-flow.md`
+  - URL GitHub issue
+  - `session_uuid`

@@ -22,8 +22,8 @@ assert_file_exists "$ISSUE_INDEX" "issue index file created"
 SESSION_UUID="$(jq -r '.session_uuid' "$ISSUE_INDEX")"
 SESSION_MANIFEST="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/session.json"
 LAYOUT_FILE="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/launch-layout.kdl"
-ENTRYPOINT_FILE="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/launch-agent.sh"
-CAPTURE_LOG="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/capture.log"
+HELPER_LOG="$REPO_ROOT/.git/.ai-teamlead/launch-helper.log"
+HELPER_MARKER="$REPO_ROOT/.git/.ai-teamlead/launch-helper.started"
 
 if ! wait_for_file "$SESSION_MANIFEST"; then
     echo "  FAIL: session manifest created"
@@ -33,15 +33,18 @@ fi
 
 assert_file_exists "$SESSION_MANIFEST" "session manifest created"
 assert_file_exists "$LAYOUT_FILE" "launcher layout created"
-assert_file_exists "$ENTRYPOINT_FILE" "launcher entrypoint created"
 
 TAB_ID="$(wait_for_json_field_not_value "$SESSION_MANIFEST" '.zellij.tab_id' 'pending' 30 || true)"
 PANE_ID="$(wait_for_json_field_not_value "$SESSION_MANIFEST" '.zellij.pane_id' 'pending' 30 || true)"
 SESSION_ID="$(jq -r '.zellij.session_id' "$SESSION_MANIFEST")"
 
-if [[ -z "$TAB_ID" || -z "$PANE_ID" ]] && [[ -f "$CAPTURE_LOG" ]]; then
-    echo "  INFO: capture.log"
-    sed -n '1,200p' "$CAPTURE_LOG"
+if [[ -z "$TAB_ID" || -z "$PANE_ID" ]] && [[ -f "$HELPER_LOG" ]]; then
+    echo "  INFO: launch-helper.log"
+    sed -n '1,200p' "$HELPER_LOG"
+fi
+
+if [[ -z "$TAB_ID" || -z "$PANE_ID" ]] && [[ -f "$HELPER_MARKER" ]]; then
+    echo "  INFO: launch-helper.started present"
 fi
 
 assert_eq "$SESSION_ID" "ai-teamlead-test" "session_id captured from configured session name"

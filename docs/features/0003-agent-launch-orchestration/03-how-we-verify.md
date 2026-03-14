@@ -15,6 +15,8 @@
   `args -> env -> settings`
 - `ai-teamlead` корректно находит или создает `zellij` session по effective
   target session
+- при `session missing` launcher корректно различает path `custom layout` и
+  `default fallback`
 - `ai-teamlead` корректно находит или создает tab по `tab_name`
 - после запуска pane в runtime state записывается `pane_id`
 
@@ -35,6 +37,8 @@ Feature считается готовой, если:
 - `zellij.session_name` является versioned fallback, а не единственным
   источником target session
 - `zellij.tab_name` является stable semantic name
+- generated `launch-layout.kdl` отвечает за analysis tab, а не за базовую
+  session при `layout = None`
 - `pane_id` является runtime-only значением
 - runtime не генерирует отдельный launcher-script для pane
 - shared multi-repo existing session запрещена
@@ -54,6 +58,20 @@ Feature считается готовой, если:
 - запускается `run`
 - используется существующая session
 - в нужном tab открывается новая pane
+
+### Сценарий 2a. Новая session с `zellij.layout`
+
+- `run` запускается при отсутствии session
+- в `settings.yml` задан `zellij.layout`
+- launcher создает новую session через пользовательский layout
+- analysis tab добавляется отдельным generated layout
+
+### Сценарий 2b. Новая session без `zellij.layout`
+
+- `run` запускается при отсутствии session
+- `zellij.layout` отсутствует
+- launcher не использует bare generated layout как базовую session
+- analysis tab добавляется отдельным generated layout
 
 ### Сценарий 3. Команда запущена внутри `zellij`
 
@@ -120,6 +138,8 @@ Feature считается готовой, если:
 - какой `tab_name` ожидался
 - существовала ли session до запуска
 - был ли создан новый tab
+- какой branch создания session был выбран:
+  `existing session`, `custom layout`, `default fallback`
 - какой `pane_id` был привязан к `session_uuid`
 
 ## Журнал изменений

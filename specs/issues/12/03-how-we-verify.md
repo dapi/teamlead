@@ -11,10 +11,29 @@
 4. Если session не существует и `zellij.layout` задан, новая session создается
    через пользовательский layout, после чего analysis tab добавляется отдельно.
 5. Если session не существует и `zellij.layout` не задан, новая session
-   стартует с нормальным default UX `zellij`, а analysis tab добавляется
-   отдельно.
+   стартует не через bare generated layout `launch-layout.kdl`, а analysis tab
+   добавляется отдельным действием после старта session.
 6. Ошибки создания session или добавления analysis tab не скрываются и дают
    диагностируемое сообщение.
+
+## Ready Criteria
+
+- issue-спека, feature 0003 и связанный ADR не расходятся по семантике
+  `zellij.layout`;
+- implementation plan ссылается на config contract, launcher contract и
+  verification-сценарии;
+- путь `session exists` остается обратно совместимым;
+- для `session missing` определен один проверяемый fallback-path без
+  generated layout на старте session.
+
+## Invariants
+
+- `zellij.layout` остается опциональным repo-level полем в `settings.yml`;
+- generated `launch-layout.kdl` продолжает отвечать только за analysis tab, а
+  не за базовую session при `layout = None`;
+- existing session по-прежнему использует path добавления analysis tab без
+  пересоздания session;
+- ошибки `zellij` локализуются по шагам `create session` и `add analysis tab`.
 
 ## Happy Path
 
@@ -52,7 +71,7 @@ Integration / smoke:
 - живой прогон на `zellij` с `layout` в тестовом конфиге и проверкой, что
   analysis tab появился в session;
 - живой прогон без `layout` и проверкой, что session стартует с нормальным
-  default UX, а не через минимальный `launch-layout.kdl`;
+  fallback-path без `-n <generated layout>` на старте session;
 - регрессия существующего integration flow вокруг `internal launch-zellij-fixture`
   и binding `pane_id/tab_id`.
 
@@ -61,7 +80,8 @@ Integration / smoke:
 - шаблон `templates/init/settings.yml` содержит закомментированный пример
   `layout`;
 - `cargo test` проходит для unit-тестов `config` и `zellij`;
-- при ручном запуске без `layout` пользователь видит обычный UX `zellij`;
+- при запуске без `layout` команда создания session не использует
+  `-n <generated layout>`;
 - при ручном запуске с `layout` пользователь видит свой layout и отдельный
   analysis tab;
 - runtime-артефакты `pane-entrypoint.sh` и `launch-layout.kdl` продолжают
@@ -80,5 +100,7 @@ Integration / smoke:
 - В unit-тестах нужно проверять конкретные команды, переданные в `Shell`.
 - Ошибки `zellij` должны оборачиваться контекстом шага: создание session или
   добавление analysis tab.
+- В логах launcher должно быть различимо, по какому path пошел запуск:
+  `existing session`, `custom layout`, `default fallback`.
 - Для ручной отладки остаются runtime-артефакты в `.git/.ai-teamlead/sessions`
   и manifest binding с `session_id`, `tab_id`, `pane_id`.

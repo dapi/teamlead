@@ -1,6 +1,6 @@
 # Issue 12: `zellij` layout при создании сессии
 
-Статус: draft, ready for plan review
+Статус: draft, implementation approved
 Тип задачи: feature
 Размер: medium
 Последнее обновление: 2026-03-13
@@ -29,21 +29,34 @@ UX, а analysis tab продолжает добавляться автомати
 
 ## Что строим
 
-- [01-what-we-build.md](/home/danil/worktrees/ai-teamlead/analysis/issue-12/specs/issues/12/01-what-we-build.md)
+- [01-what-we-build.md](./01-what-we-build.md)
 
 ## Как строим
 
-- [02-how-we-build.md](/home/danil/worktrees/ai-teamlead/analysis/issue-12/specs/issues/12/02-how-we-build.md)
+- [02-how-we-build.md](./02-how-we-build.md)
 
 ## Как проверяем
 
-- [03-how-we-verify.md](/home/danil/worktrees/ai-teamlead/analysis/issue-12/specs/issues/12/03-how-we-verify.md)
+- [03-how-we-verify.md](./03-how-we-verify.md)
+
+## План имплементации
+
+- [04-implementation-plan.md](./04-implementation-plan.md)
+
+## Связанный контекст
+
+- [../../../docs/features/0003-agent-launch-orchestration/README.md](../../../docs/features/0003-agent-launch-orchestration/README.md)
+- [../../../docs/adr/0011-use-zellij-main-release-in-ci.md](../../../docs/adr/0011-use-zellij-main-release-in-ci.md)
+- [../../../docs/adr/0022-zellij-layout-contract-for-new-sessions.md](../../../docs/adr/0022-zellij-layout-contract-for-new-sessions.md)
 
 ## Вывод анализа
 
 Информации в issue достаточно, чтобы готовить план реализации без дополнительных
 вопросов пользователю.
 
-Новый ADR на текущем этапе не требуется, если в реализации останется контракт:
-`zellij.layout` принимает только строковое имя layout, а fallback без поля
-сохраняет обычный UX `zellij` без расширения формата конфига.
+План согласован и может идти в реализацию при следующем контракте:
+
+- `zellij.layout` принимает только строковое имя layout;
+- если поле отсутствует, новая session создается без bare generated layout;
+- analysis tab продолжает добавляться отдельно через generated layout;
+- решение зафиксировано отдельным ADR, а не только issue-спекой.

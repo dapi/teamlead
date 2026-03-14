@@ -98,13 +98,21 @@ zellij:
 
 ## ADR Impact
 
-Новый ADR не требуется, если решение остается локальным расширением текущего
-контракта `zellij` launcher'а и не меняет SSOT/ADR по execution model.
+Нужен отдельный ADR.
 
-ADR понадобится только если будет принято проектное решение:
+Причина: задача меняет сразу три устойчивых контракта уровня подсистемы:
 
-- поддерживать не только имя layout, но и путь к `.kdl`;
-- вводить новый общий тип launcher layout contract для разных режимов запуска.
+- versioned config contract через новое поле `zellij.layout`;
+- launcher contract для создания новой `zellij` session;
+- verification contract для fallback без `layout`.
+
+ADR должен зафиксировать:
+
+- что `zellij.layout` принимает только строковое имя layout;
+- что отсутствие поля означает создание новой session без bare generated layout;
+- что analysis tab по-прежнему добавляется отдельным generated layout;
+- что поддержка пути к `.kdl` и других форматов значения в первую версию не
+  входит.
 
 ## Alternatives Considered
 

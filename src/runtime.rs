@@ -237,6 +237,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            layout: None,
         };
 
         let manifest = layout
@@ -279,6 +280,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            layout: None,
         };
 
         let manifest = layout
@@ -313,6 +315,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            layout: None,
         };
 
         let manifest = layout

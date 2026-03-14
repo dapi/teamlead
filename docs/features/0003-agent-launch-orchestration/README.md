@@ -20,19 +20,19 @@ session/tab.
 
 ## Что строим
 
-- [01-what-we-build.md](/home/danil/code/teamlead/docs/features/0003-agent-launch-orchestration/01-what-we-build.md)
+- [01-what-we-build.md](./01-what-we-build.md)
 
 ## Как строим
 
-- [02-how-we-build.md](/home/danil/code/teamlead/docs/features/0003-agent-launch-orchestration/02-how-we-build.md)
+- [02-how-we-build.md](./02-how-we-build.md)
 
 ## Как проверяем
 
-- [03-how-we-verify.md](/home/danil/code/teamlead/docs/features/0003-agent-launch-orchestration/03-how-we-verify.md)
+- [03-how-we-verify.md](./03-how-we-verify.md)
 
 ## План реализации
 
-- [04-implementation-plan.md](/home/danil/code/teamlead/docs/features/0003-agent-launch-orchestration/04-implementation-plan.md)
+- [04-implementation-plan.md](./04-implementation-plan.md)
 
 ## Зависимости
 
@@ -44,10 +44,11 @@ session/tab.
 
 ## Связанные документы
 
-- [docs/issue-analysis-flow.md](/home/danil/code/teamlead/docs/issue-analysis-flow.md)
-- [docs/adr/0005-cli-contract-for-poll-and-run.md](/home/danil/code/teamlead/docs/adr/0005-cli-contract-for-poll-and-run.md)
-- [docs/adr/0008-bind-issue-to-agent-session-uuid.md](/home/danil/code/teamlead/docs/adr/0008-bind-issue-to-agent-session-uuid.md)
-- [docs/adr/0014-zellij-launch-context-naming.md](/home/danil/code/teamlead/docs/adr/0014-zellij-launch-context-naming.md)
+- [../../issue-analysis-flow.md](../../issue-analysis-flow.md)
+- [../../adr/0005-cli-contract-for-poll-and-run.md](../../adr/0005-cli-contract-for-poll-and-run.md)
+- [../../adr/0008-bind-issue-to-agent-session-uuid.md](../../adr/0008-bind-issue-to-agent-session-uuid.md)
+- [../../adr/0014-zellij-launch-context-naming.md](../../adr/0014-zellij-launch-context-naming.md)
+- [../../adr/0022-zellij-layout-contract-for-new-sessions.md](../../adr/0022-zellij-layout-contract-for-new-sessions.md)
 
 ## Открытые вопросы
 
@@ -60,3 +61,7 @@ session/tab.
 ### 2026-03-13
 
 - создан каталог feature 0003 для orchestration flow запуска агента
+
+### 2026-03-14
+
+- добавлена ссылка на ADR по `zellij.layout` и fallback-path новой session

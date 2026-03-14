@@ -58,6 +58,13 @@ impl Config {
             "zellij.tab_name must not be empty in {}",
             path.display()
         );
+        if let Some(layout) = &self.zellij.layout {
+            anyhow::ensure!(
+                !layout.trim().is_empty(),
+                "zellij.layout must not be empty in {}",
+                path.display()
+            );
+        }
         anyhow::ensure!(
             !self.launch_agent.analysis_branch_template.trim().is_empty(),
             "launch_agent.analysis_branch_template must not be empty in {}",
@@ -111,6 +118,7 @@ pub struct RuntimeConfig {
 pub struct ZellijConfig {
     pub session_name: String,
     pub tab_name: String,
+    pub layout: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -146,6 +154,7 @@ runtime:
 zellij:
   session_name: "ai-teamlead"
   tab_name: "issue-analysis"
+  layout: "custom-layout"
 
 launch_agent:
   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
@@ -165,6 +174,7 @@ launch_agent:
             config.launch_agent.worktree_root_template,
             "${HOME}/worktrees/${REPO}/${BRANCH}"
         );
+        assert_eq!(config.zellij.layout.as_deref(), Some("custom-layout"));
     }
 
     #[test]
@@ -175,5 +185,23 @@ launch_agent:
         let config: Config = serde_yaml::from_str(&yaml).expect("yaml should parse");
         let error = config.validate(&path).expect_err("validation should fail");
         assert!(error.to_string().contains("poll_interval_seconds"));
+    }
+
+    #[test]
+    fn parses_config_without_optional_zellij_layout() {
+        let yaml = sample_config().replace("  layout: \"custom-layout\"\n", "");
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        let config: Config = serde_yaml::from_str(&yaml).expect("yaml should parse");
+        config.validate(&path).expect("config should validate");
+        assert_eq!(config.zellij.layout, None);
+    }
+
+    #[test]
+    fn rejects_blank_zellij_layout() {
+        let yaml = sample_config().replace("custom-layout", "   ");
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        let config: Config = serde_yaml::from_str(&yaml).expect("yaml should parse");
+        let error = config.validate(&path).expect_err("validation should fail");
+        assert!(error.to_string().contains("zellij.layout"));
     }
 }

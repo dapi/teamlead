@@ -44,6 +44,41 @@
   - `./.claude/`
   - `./.codex/`
 
+## Завершение анализа
+
+После завершения работы вызови ОДНУ из команд:
+
+Если SDD-комплект собран и полон:
+
+```
+$AI_TEAMLEAD_BIN internal complete-stage $AI_TEAMLEAD_SESSION_UUID \
+  --outcome plan-ready \
+  --message "краткое описание результата"
+```
+
+Если нужны ответы пользователя:
+
+```
+$AI_TEAMLEAD_BIN internal complete-stage $AI_TEAMLEAD_SESSION_UUID \
+  --outcome needs-clarification \
+  --message "краткое описание вопросов"
+```
+
+Если заблокирован:
+
+```
+$AI_TEAMLEAD_BIN internal complete-stage $AI_TEAMLEAD_SESSION_UUID \
+  --outcome blocked \
+  --message "причина блокировки"
+```
+
+Команда сама выполнит коммит, пуш и создание draft PR.
+НЕ выполняй git commit, git push, gh pr create самостоятельно.
+
+Нотация commit message: `analysis(#N): <описание>`
+Нотация PR title: `analysis(#N): <описание>`
+В PR body укажи `Ref #N` и список артефактов.
+
 ## Связанные системные документы
 
 - системный SSOT `docs/issue-analysis-flow.md` из репозитория `ai-teamlead`

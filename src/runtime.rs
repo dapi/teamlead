@@ -297,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn updates_session_status_in_manifest() {
+    fn updates_session_status_to_completed() {
         let temp = tempdir().expect("temp dir");
         let repo_root = temp.path().join("repo");
         let git_dir = repo_root.join(".git");
@@ -322,10 +322,17 @@ mod tests {
             .create_claim_binding(&repo, "PVT_project", &zellij, 42)
             .expect("claim binding");
 
+        assert_eq!(manifest.status, "active");
         let updated = layout
             .update_session_status(&manifest.session_uuid, "completed")
             .expect("status updated");
 
         assert_eq!(updated.status, "completed");
+
+        let reloaded = layout
+            .load_session_manifest(&manifest.session_uuid)
+            .expect("reload")
+            .expect("manifest exists");
+        assert_eq!(reloaded.status, "completed");
     }
 }

@@ -94,12 +94,13 @@ fn execute_complete_stage(
     } else {
         context.artifacts_dir.clone()
     };
+    let artifacts_path = context.worktree_root.join(&artifacts_dir);
     let commit_title = format!("analysis(#{}): {}", manifest.issue_number, context.message);
 
     let committed =
         git_add_and_commit(shell, &context.worktree_root, &artifacts_dir, &commit_title)?;
 
-    if committed {
+    if committed || artifacts_path.exists() {
         git_push(shell, &context.worktree_root, &branch)?;
     }
 
@@ -216,8 +217,6 @@ fn create_draft_pr_if_needed(
         Ok(_) => {} // count == 0, proceed to create
         Err(e) => {
             eprintln!("complete-stage: warning: failed to check existing PRs: {e}");
-            eprintln!("complete-stage: skipping PR creation");
-            return Ok(());
         }
     }
 
@@ -386,15 +385,28 @@ mod tests {
         );
     }
 
+    #[derive(Debug, Clone)]
+    enum FakeResponse {
+        Ok(String),
+        Err(String),
+    }
+
     #[derive(Default)]
     struct FakeShell {
-        responses: BTreeMap<String, String>,
+        responses: BTreeMap<String, FakeResponse>,
         calls: RefCell<Vec<String>>,
     }
 
     impl FakeShell {
         fn with_response(mut self, key: &str, value: &str) -> Self {
-            self.responses.insert(key.to_string(), value.to_string());
+            self.responses
+                .insert(key.to_string(), FakeResponse::Ok(value.to_string()));
+            self
+        }
+
+        fn with_error(mut self, key: &str, value: &str) -> Self {
+            self.responses
+                .insert(key.to_string(), FakeResponse::Err(value.to_string()));
             self
         }
 
@@ -410,7 +422,12 @@ mod tests {
             self.responses
                 .iter()
                 .find(|(pattern, _)| key.starts_with(pattern.as_str()))
-                .map(|(_, value)| value.clone())
+                .map(|(_, response)| response)
+                .map(|response| match response {
+                    FakeResponse::Ok(value) => Ok(value.clone()),
+                    FakeResponse::Err(error) => Err(anyhow!(error.clone())),
+                })
+                .transpose()?
                 .ok_or_else(|| anyhow!("missing fake response for: {key}"))
         }
 
@@ -503,6 +520,83 @@ mod tests {
     }
 
     #[test]
+    fn retries_push_when_artifacts_exist_without_new_changes() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        let worktree_root = temp.path().join("worktree");
+        std::fs::create_dir_all(repo_root.join(".git")).expect("git dir");
+        std::fs::create_dir_all(worktree_root.join("specs/issues/15")).expect("artifacts");
+        std::fs::write(
+            worktree_root.join("specs/issues/15/README.md"),
+            "# result\n",
+        )
+        .expect("artifact file");
+        write_config(&repo_root);
+
+        let runtime = RuntimeLayout::from_repo_root(&repo_root);
+        runtime.ensure_exists().expect("runtime layout");
+        let repo = RepoContext {
+            repo_root: repo_root.clone(),
+            git_dir: repo_root.join(".git"),
+            github_owner: "dapi".into(),
+            github_repo: "ai-teamlead".into(),
+        };
+        let manifest = runtime
+            .create_claim_binding(
+                &repo,
+                "PVT_project",
+                &ZellijConfig {
+                    session_name: "teamlead".into(),
+                    tab_name: "issue-analysis".into(),
+                },
+                15,
+            )
+            .expect("claim binding");
+
+        let shell = FakeShell::default()
+            .with_response("git add specs/issues/15", "")
+            .with_response("git diff --cached --name-only -- specs/issues/15", "")
+            .with_response("git push origin analysis/issue-15", "")
+            .with_response(
+                "gh api graphql -f query=",
+                r#"{"data":{"node":{"id":"PVT_project","title":"ai-teamlead","field":{"id":"status_field","options":[{"id":"opt_progress","name":"Analysis In Progress"},{"id":"opt_clarify","name":"Waiting for Clarification"},{"id":"opt_review","name":"Waiting for Plan Review"},{"id":"opt_blocked","name":"Analysis Blocked"}]},"items":{"nodes":[{"id":"ITEM_15","fieldValueByName":{"name":"Analysis In Progress","optionId":"opt_progress"},"content":{"number":15,"state":"OPEN","repository":{"name":"ai-teamlead","owner":{"login":"dapi"}}}}]}}}}"#,
+            );
+
+        let context = ExecutionContext {
+            repo_root: repo_root.clone(),
+            worktree_root,
+            branch: "analysis/issue-15".into(),
+            artifacts_dir: "specs/issues/15".into(),
+            message: "нужны ответы пользователя".into(),
+            outcome: StageOutcome::NeedsClarification,
+        };
+
+        execute_complete_stage(&shell, &manifest.session_uuid, context).expect("complete stage");
+
+        let calls = shell.calls();
+        assert!(
+            calls
+                .iter()
+                .any(|call| call == "git push origin analysis/issue-15")
+        );
+
+        let updated_manifest = runtime
+            .load_session_manifest(&manifest.session_uuid)
+            .expect("manifest read")
+            .expect("manifest exists");
+        let updated_issue = runtime
+            .load_issue_index(15)
+            .expect("index read")
+            .expect("index exists");
+
+        assert_eq!(updated_manifest.status, "completed");
+        assert_eq!(
+            updated_issue.last_known_flow_status,
+            "Waiting for Clarification"
+        );
+    }
+
+    #[test]
     fn plan_ready_commits_pushes_and_creates_pr() {
         let temp = tempdir().expect("temp dir");
         let repo_root = temp.path().join("repo");
@@ -589,6 +683,87 @@ mod tests {
         assert_eq!(
             updated_issue.last_known_flow_status,
             "Waiting for Plan Review"
+        );
+    }
+
+    #[test]
+    fn plan_ready_still_attempts_pr_create_when_pr_list_fails() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        let worktree_root = temp.path().join("worktree");
+        std::fs::create_dir_all(repo_root.join(".git")).expect("git dir");
+        std::fs::create_dir_all(worktree_root.join("specs/issues/15")).expect("artifacts");
+        std::fs::write(
+            worktree_root.join("specs/issues/15/README.md"),
+            "# result\n",
+        )
+        .expect("artifact file");
+        write_config(&repo_root);
+
+        let runtime = RuntimeLayout::from_repo_root(&repo_root);
+        runtime.ensure_exists().expect("runtime layout");
+        let repo = RepoContext {
+            repo_root: repo_root.clone(),
+            git_dir: repo_root.join(".git"),
+            github_owner: "dapi".into(),
+            github_repo: "ai-teamlead".into(),
+        };
+        let manifest = runtime
+            .create_claim_binding(
+                &repo,
+                "PVT_project",
+                &ZellijConfig {
+                    session_name: "teamlead".into(),
+                    tab_name: "issue-analysis".into(),
+                },
+                15,
+            )
+            .expect("claim binding");
+
+        let shell = FakeShell::default()
+            .with_response("git add specs/issues/15", "")
+            .with_response(
+                "git diff --cached --name-only -- specs/issues/15",
+                "specs/issues/15/README.md",
+            )
+            .with_response("git commit -m analysis(#15): SDD готов", "")
+            .with_response("git push origin analysis/issue-15", "")
+            .with_error(
+                "gh pr list --head analysis/issue-15 --json number --jq length",
+                "transient gh failure",
+            )
+            .with_response(
+                "gh pr create --draft --title analysis(#15): SDD готов --body Ref https://github.com/dapi/ai-teamlead/issues/15",
+                "https://github.com/dapi/ai-teamlead/pull/15",
+            )
+            .with_response(
+                "gh api graphql -f query=",
+                r#"{"data":{"node":{"id":"PVT_project","title":"ai-teamlead","field":{"id":"status_field","options":[{"id":"opt_progress","name":"Analysis In Progress"},{"id":"opt_clarify","name":"Waiting for Clarification"},{"id":"opt_review","name":"Waiting for Plan Review"},{"id":"opt_blocked","name":"Analysis Blocked"}]},"items":{"nodes":[{"id":"ITEM_15","fieldValueByName":{"name":"Analysis In Progress","optionId":"opt_progress"},"content":{"number":15,"state":"OPEN","repository":{"name":"ai-teamlead","owner":{"login":"dapi"}}}}]}}}}"#,
+            );
+
+        let context = ExecutionContext {
+            repo_root: repo_root.clone(),
+            worktree_root,
+            branch: "analysis/issue-15".into(),
+            artifacts_dir: "specs/issues/15".into(),
+            message: "SDD готов".into(),
+            outcome: StageOutcome::PlanReady,
+        };
+
+        execute_complete_stage(&shell, &manifest.session_uuid, context).expect("complete stage");
+
+        let calls = shell.calls();
+        assert!(
+            calls
+                .iter()
+                .any(|call| call
+                    == "gh pr list --head analysis/issue-15 --json number --jq length")
+        );
+        assert!(
+            calls
+                .iter()
+                .any(|call| call
+                    .starts_with("gh pr create --draft --title analysis(#15): SDD готов"))
         );
     }
 

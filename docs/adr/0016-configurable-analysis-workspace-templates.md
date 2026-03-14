@@ -9,6 +9,10 @@
 до старта реального агента. При этом naming и layout этих сущностей зависят от
 конкретного проекта и не должны быть захардкожены в core-коде `ai-teamlead`.
 
+Отдельно в конфиге уже существует `zellij.session_name`, который тоже задает
+stable project-local naming. До issue #23 он жил по другому контракту через
+bootstrap token `__SESSION_NAME__`, что создавало special-case в `init`.
+
 ## Решение
 
 В `./.ai-teamlead/settings.yml` добавляется секция:
@@ -32,6 +36,7 @@ Bootstrap defaults:
 - branch: `analysis/issue-${ISSUE_NUMBER}`
 - worktree root: `${HOME}/worktrees/${REPO}/${BRANCH}`
 - artifacts dir: `specs/issues/${ISSUE_NUMBER}`
+- `zellij.session_name`: `${REPO}`
 
 Поддерживаемые placeholder-переменные в текущей реализации:
 
@@ -40,12 +45,15 @@ Bootstrap defaults:
   `${BRANCH}`
 - для `analysis_artifacts_dir_template`: `${HOME}`, `${REPO}`,
   `${ISSUE_NUMBER}`, `${BRANCH}`
+- для `zellij.session_name`: только `${REPO}`
 
 Семантика MVP:
 
 - интерполяция делается простым string replace внутри `ai-teamlead`
-- неизвестные placeholder-переменные не валидируются и остаются в строке как
-  литералы
+- для `launch_agent.*` неизвестные placeholder-переменные не валидируются и
+  остаются в строке как литералы
+- для `zellij.session_name` неразрешенные `${...}` считаются ошибкой
+  конфигурации
 - `worktree_root_template` должен рендериться в абсолютный путь
 - `analysis_artifacts_dir_template` интерпретируется как путь относительно
   analysis worktree root
@@ -92,3 +100,8 @@ Bootstrap defaults:
 
 - добавлены configurable templates для analysis branch, worktree root и
   artifacts dir
+
+### 2026-03-14
+
+- `zellij.session_name` переведен на единый template contract с `${REPO}`
+- special-case bootstrap token `__SESSION_NAME__` признан устаревшим и удален

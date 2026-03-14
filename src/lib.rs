@@ -8,4 +8,5 @@ pub mod project_files;
 pub mod repo;
 pub mod runtime;
 pub mod shell;
+pub mod templates;
 pub mod zellij;

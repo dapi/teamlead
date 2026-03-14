@@ -38,8 +38,11 @@
 
 - [docs/code-quality.md](/home/danil/code/teamlead/docs/code-quality.md)
 - [docs/documentation-structure.md](/home/danil/code/teamlead/docs/documentation-structure.md)
+- [docs/implementation-plan.md](/home/danil/code/teamlead/docs/implementation-plan.md)
 - [docs/templates/feature-spec-template.md](/home/danil/code/teamlead/docs/templates/feature-spec-template.md)
 - [docs/issue-analysis-flow.md](/home/danil/code/teamlead/docs/issue-analysis-flow.md)
+- [AURA.md](/home/danil/code/teamlead/AURA.md) как project-local доступ к
+  личному высокоуровневому инженерному видению разработчика
 
 ## MVP
 
@@ -149,7 +152,7 @@ runtime:
   poll_interval_seconds: 3600
 
 zellij:
-  session_name: "{repo_name}-ai-teamlead"
+  session_name: "${REPO}"
   tab_name: "issue-analysis"
 
 launch_agent:
@@ -161,10 +164,13 @@ launch_agent:
 `zellij.session_name` и `zellij.tab_name` задают стабильный project-local
 launcher context.
 
-Bootstrap default для `zellij.session_name` формируется как
-`{repo_name}-ai-teamlead`, где `repo_name` это имя текущего git-репозитория.
-В сгенерированном `settings.yml` это значение уже материализуется в конкретную
-строку, например `teamlead-ai-teamlead`.
+Bootstrap default для `zellij.session_name` хранится в `settings.yml` как
+template `${REPO}`. Во время реального запуска `ai-teamlead` подставляет сюда
+canonical GitHub repo slug из `origin`.
+
+Для `zellij.session_name` в MVP поддерживается только placeholder `${REPO}`.
+Если после рендера в значении остались `${...}`, запуск завершается ошибкой
+конфигурации. Literal-значения без placeholder остаются валидными.
 
 Во время реального запуска `ai-teamlead`:
 

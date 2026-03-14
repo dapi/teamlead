@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 
 use crate::project_files::ProjectPaths;
 
@@ -28,7 +28,7 @@ pub struct InitReport {
 }
 
 pub fn init_project_files(paths: &ProjectPaths) -> Result<InitReport> {
-    let settings_template = render_settings_template(paths)?;
+    let settings_template = render_settings_template();
     fs::create_dir_all(&paths.customization_root)
         .with_context(|| format!("failed to create {}", paths.customization_root.display()))?;
     fs::create_dir_all(&paths.flows_dir)
@@ -112,19 +112,8 @@ pub fn init_project_files(paths: &ProjectPaths) -> Result<InitReport> {
     Ok(report)
 }
 
-fn render_settings_template(paths: &ProjectPaths) -> Result<String> {
-    let repo_name = paths
-        .repo_root
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or_else(|| {
-            anyhow!(
-                "failed to derive repo_name from {}",
-                paths.repo_root.display()
-            )
-        })?;
-    let session_name = format!("{repo_name}-ai-teamlead");
-    Ok(SETTINGS_TEMPLATE.replace("__SESSION_NAME__", &session_name))
+fn render_settings_template() -> String {
+    SETTINGS_TEMPLATE.to_string()
 }
 
 fn symlink_init_if_missing(
@@ -239,6 +228,6 @@ mod tests {
         assert_eq!(second.skipped.len(), 12);
 
         let settings = std::fs::read_to_string(&paths.settings_path).expect("settings");
-        assert!(settings.contains("session_name: \"teamlead-ai-teamlead\""));
+        assert!(settings.contains("session_name: \"${REPO}\""));
     }
 }

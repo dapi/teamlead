@@ -66,7 +66,7 @@
   "created_at": "2026-03-13T12:00:00Z",
   "updated_at": "2026-03-13T12:00:00Z",
   "zellij": {
-    "session_name": "teamlead-ai-teamlead",
+    "session_name": "teamlead",
     "tab_name": "issue-analysis",
     "session_id": "zellij-session-id",
     "tab_id": "zellij-tab-id",

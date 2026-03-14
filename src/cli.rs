@@ -11,10 +11,15 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     Init,
-    Poll,
+    Poll {
+        #[arg(long = "zellij-session", value_name = "SESSION")]
+        zellij_session: Option<String>,
+    },
     Run {
         #[arg(short = 'd', long = "debug")]
         debug: bool,
+        #[arg(long = "zellij-session", value_name = "SESSION")]
+        zellij_session: Option<String>,
         issue: String,
     },
     #[command(hide = true)]

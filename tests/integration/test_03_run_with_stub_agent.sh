@@ -43,6 +43,7 @@ fi
 WORKTREE_ROOT="${HOME}/worktrees/example/analysis/issue-42"
 ARTIFACTS_DIR="$WORKTREE_ROOT/specs/issues/42"
 PANE_ID="$(wait_for_json_field_not_value "$SESSION_MANIFEST" '.zellij.pane_id' 'pending' 30 || true)"
+SESSION_NAME="$(jq -r '.zellij.session_name' "$SESSION_MANIFEST")"
 wait_for_dir "$WORKTREE_ROOT" 30 || true
 wait_for_dir "$ARTIFACTS_DIR" 30 || true
 wait_for_file "$STUB_OUT/codex.invoked" 30 || true
@@ -60,6 +61,7 @@ assert_eq "$(cat "$STUB_OUT/analysis_branch")" "analysis/issue-42" "run passed a
 assert_eq "$(cat "$STUB_OUT/worktree_root")" "$WORKTREE_ROOT" "run passed worktree root to stub agent"
 assert_eq "$(cat "$STUB_OUT/analysis_artifacts_dir")" "specs/issues/42" "run passed artifacts dir to stub agent"
 assert_eq "$(cat "$STUB_OUT/codex.cwd")" "$WORKTREE_ROOT" "stub agent started in analysis worktree"
+assert_eq "$SESSION_NAME" "example" "run uses rendered settings zellij session outside zellij env"
 assert_ne "$PANE_ID" "" "run captured zellij pane id"
 assert_file_contains "$LAUNCH_LOG" "pane-entrypoint: session_uuid=$SESSION_UUID" "run wrote pane entrypoint bootstrap log"
 assert_file_contains "$LAUNCH_LOG" "launch-agent: starting agent in $WORKTREE_ROOT" "run wrote launch-agent progress log"

@@ -105,13 +105,14 @@ zellij:
 Здесь:
 
 - `session_name` следует правилу из
-  [ADR-0014](../../../docs/adr/0014-zellij-launch-context-naming.md):
-  default хранится как `${REPO}` и рендерится из GitHub repo slug
-- `session_name` и `tab_name` это стабильные project-local идентификаторы для
-  bootstrap и orchestration
+  [ADR-0021](../../../docs/adr/0021-zellij-session-target-resolution.md):
+  default хранится как `${REPO}` и рендерится из GitHub repo slug, но
+  используется как fallback после CLI override и `ZELLIJ_SESSION_NAME`
+- `tab_name` это стабильный project-local идентификатор для orchestration
 - runtime `session_id`, `tab_id`, `pane_id` не задаются в конфиге
-- `ai-teamlead` во время запуска должен либо найти существующие session/tab по
-  этим именам, либо создать их
+- `ai-teamlead` во время запуска должен выбрать effective target session,
+  запретить shared multi-repo existing session и затем либо найти существующие
+  session/tab, либо создать их
 
 ## Ограничения реализации
 

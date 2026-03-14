@@ -161,8 +161,8 @@ launch_agent:
   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
 ```
 
-`zellij.session_name` и `zellij.tab_name` задают стабильный project-local
-launcher context.
+`zellij.session_name` задает versioned fallback для target session, а
+`zellij.tab_name` задает versioned target tab.
 
 Bootstrap default для `zellij.session_name` хранится в `settings.yml` как
 template `${REPO}`. Во время реального запуска `ai-teamlead` подставляет сюда
@@ -174,7 +174,11 @@ canonical GitHub repo slug из `origin`.
 
 Во время реального запуска `ai-teamlead`:
 
-- использует эти имена, чтобы найти или создать нужные session/tab
+- выбирает target session в порядке:
+  `--zellij-session` -> `ZELLIJ_SESSION_NAME` -> `zellij.session_name`
+- использует выбранную session и `zellij.tab_name`, чтобы найти или создать
+  нужные session/tab
+- для existing session валидирует, что в ней нет panes из другого GitHub repo
 - сохраняет runtime `session_id`, `tab_id`, `pane_id` уже в `.git/.ai-teamlead/`
 
 Обязательные поля MVP:

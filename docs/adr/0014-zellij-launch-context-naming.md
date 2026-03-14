@@ -1,6 +1,6 @@
 # ADR-0014: Naming contract для `zellij` launch context
 
-Статус: accepted
+Статус: superseded by ADR-0021
 Дата: 2026-03-13
 
 ## Контекст
@@ -79,3 +79,5 @@ Runtime `zellij` identifiers не хранятся в versioned config:
 - bootstrap placeholder `__SESSION_NAME__` удален из init-шаблона
 - default для `zellij.session_name` переведен на `${REPO}`
 - рендеринг `zellij.session_name` унифицирован с общим template contract
+- дальнейший выбор effective target session вынесен в
+  [ADR-0021](./0021-zellij-session-target-resolution.md)

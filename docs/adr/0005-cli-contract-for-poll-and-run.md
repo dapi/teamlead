@@ -38,6 +38,8 @@
 
 - `poll` не принимает issue как аргумент
 - `run` принимает идентификатор issue или URL issue
+- `poll` и `run` могут принимать optional override
+  `--zellij-session <SESSION>` для target launcher context
 - обе команды работают в контексте текущего репозитория и его
   `./.ai-teamlead/settings.yml`
 - обе команды используют ту же статусную модель GitHub Project
@@ -59,3 +61,11 @@
 
 - [docs/issue-analysis-flow.md](/home/danil/code/teamlead/docs/issue-analysis-flow.md)
 - [docs/features/0001-ai-teamlead-daemon/README.md](/home/danil/code/teamlead/docs/features/0001-ai-teamlead-daemon/README.md)
+- [docs/adr/0021-zellij-session-target-resolution.md](/home/danil/code/teamlead/docs/adr/0021-zellij-session-target-resolution.md)
+
+## Журнал изменений
+
+### 2026-03-14
+
+- добавлен optional CLI override `--zellij-session <SESSION>` для `poll` и
+  `run`

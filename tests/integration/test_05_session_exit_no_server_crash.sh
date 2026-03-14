@@ -6,9 +6,9 @@ set -euo pipefail
 #
 # Scenario:
 #   1. Create an "outer" zellij session (simulates user's terminal)
-#   2. From inside that session, launch ai-teamlead which creates an
-#      "inner" ai-teamlead-test session with a short-lived stub agent
-#   3. Wait for the stub agent to finish and the inner pane to exit
+#   2. From inside that session, launch ai-teamlead which must reuse the
+#      current zellij session by default
+#   3. Wait for the stub agent to finish and the launched pane to exit
 #   4. Verify the outer session is still alive (server not crashed)
 
 AI_TEAMLEAD_BIN="/test/bin/ai-teamlead"
@@ -88,16 +88,20 @@ sleep 6
 # --- Step 4: Verify the outer session survived ---
 assert_session_alive "$OUTER_SESSION" "outer zellij session survives after agent exit (issue #27)"
 
-# Additional check: verify no ZELLIJ env vars leaked into the inner session.
-# The pane-entrypoint or launch log should not reference the outer session.
+# Additional check: verify the runtime binding points at the reused outer
+# session rather than the fallback session from settings.
 ISSUE_INDEX="$REPO_ROOT/.git/.ai-teamlead/issues/99.json"
 if [[ -f "$ISSUE_INDEX" ]]; then
     SESSION_UUID="$(jq -r '.session_uuid' "$ISSUE_INDEX")"
     LAUNCH_LOG="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/launch.log"
     LAYOUT_FILE="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/launch-layout.kdl"
+    SESSION_MANIFEST="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/session.json"
 
     if [[ -f "$LAYOUT_FILE" ]]; then
         assert_file_contains "$LAYOUT_FILE" "close_on_exit false" "layout includes close_on_exit false for pane lifecycle"
+    fi
+    if [[ -f "$SESSION_MANIFEST" ]]; then
+        assert_eq "$(jq -r '.zellij.session_name' "$SESSION_MANIFEST")" "$OUTER_SESSION" "run reused current zellij session from env"
     fi
 fi
 

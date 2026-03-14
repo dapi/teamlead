@@ -23,8 +23,12 @@ pub fn run() -> Result<()> {
 
     match cli.command {
         Command::Init => run_init(&shell),
-        Command::Poll => run_poll(&shell),
-        Command::Run { issue, debug } => run_manual_run(&shell, &issue, debug),
+        Command::Poll { zellij_session } => run_poll(&shell, zellij_session.as_deref()),
+        Command::Run {
+            issue,
+            debug,
+            zellij_session,
+        } => run_manual_run(&shell, &issue, debug, zellij_session.as_deref()),
         Command::Internal { internal } => run_internal(&shell, internal),
     }
 }
@@ -51,8 +55,8 @@ fn run_init(shell: &dyn Shell) -> Result<()> {
     Ok(())
 }
 
-fn run_poll(shell: &dyn Shell) -> Result<()> {
-    let context = load_execution_context(shell)?;
+fn run_poll(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<()> {
+    let context = load_execution_context(shell, zellij_session_override)?;
     let github = GhProjectClient::new(shell);
     let zellij = ZellijLauncher::new(shell);
     let snapshot =
@@ -96,6 +100,7 @@ fn run_poll(shell: &dyn Shell) -> Result<()> {
     );
     let binary_path = std::env::current_exe().context("failed to resolve ai-teamlead binary")?;
     if let Err(error) = zellij.launch_issue_analysis(
+        &context.repo,
         &context.repo.repo_root,
         &context.runtime,
         &context.config.zellij,
@@ -140,8 +145,13 @@ fn run_poll(shell: &dyn Shell) -> Result<()> {
     Ok(())
 }
 
-fn run_manual_run(shell: &dyn Shell, issue_ref: &str, debug: bool) -> Result<()> {
-    let context = load_execution_context(shell)?;
+fn run_manual_run(
+    shell: &dyn Shell,
+    issue_ref: &str,
+    debug: bool,
+    zellij_session_override: Option<&str>,
+) -> Result<()> {
+    let context = load_execution_context(shell, zellij_session_override)?;
     let github = GhProjectClient::new(shell);
     let zellij = ZellijLauncher::new(shell);
     let snapshot =
@@ -230,6 +240,7 @@ fn run_manual_run(shell: &dyn Shell, issue_ref: &str, debug: bool) -> Result<()>
     );
     let binary_path = std::env::current_exe().context("failed to resolve ai-teamlead binary")?;
     zellij.launch_issue_analysis(
+        &context.repo,
         &context.repo.repo_root,
         &context.runtime,
         &context.config.zellij,
@@ -317,7 +328,7 @@ fn run_internal(shell: &dyn Shell, internal: InternalCommand) -> Result<()> {
 }
 
 fn run_internal_bind_zellij_pane(shell: &dyn Shell, session_uuid: &str) -> Result<()> {
-    let context = load_execution_context(shell)?;
+    let context = load_execution_context(shell, None)?;
     let (session_id, tab_id, pane_id) = capture_current_binding(
         shell,
         &context.repo.repo_root,
@@ -333,7 +344,7 @@ fn run_internal_bind_zellij_pane(shell: &dyn Shell, session_uuid: &str) -> Resul
 }
 
 fn run_internal_launch_zellij_fixture(shell: &dyn Shell, issue_number: u64) -> Result<()> {
-    let context = load_execution_context(shell)?;
+    let context = load_execution_context(shell, None)?;
     let manifest = context.runtime.create_claim_binding(
         &context.repo,
         &context.config.github.project_id,
@@ -347,6 +358,7 @@ fn run_internal_launch_zellij_fixture(shell: &dyn Shell, issue_number: u64) -> R
     );
     let binary_path = std::env::current_exe().context("failed to resolve ai-teamlead binary")?;
     zellij.launch_issue_analysis(
+        &context.repo,
         &context.repo.repo_root,
         &context.runtime,
         &context.config.zellij,
@@ -363,7 +375,7 @@ fn run_internal_launch_zellij_fixture(shell: &dyn Shell, issue_number: u64) -> R
 }
 
 fn run_internal_render_launch_agent_context(shell: &dyn Shell, issue_ref: &str) -> Result<()> {
-    let context = load_execution_context(shell)?;
+    let context = load_execution_context(shell, None)?;
     let issue_number = parse_issue_ref(issue_ref)
         .with_context(|| format!("failed to parse issue reference: {issue_ref}"))?;
     let rendered = render_launch_agent_context(&context, issue_number)?;
@@ -388,16 +400,28 @@ struct ExecutionContext {
     runtime: RuntimeLayout,
 }
 
-fn load_execution_context(shell: &dyn Shell) -> Result<ExecutionContext> {
+fn load_execution_context(
+    shell: &dyn Shell,
+    zellij_session_override: Option<&str>,
+) -> Result<ExecutionContext> {
     let cwd = std::env::current_dir().context("failed to get current directory")?;
-    load_execution_context_at(shell, cwd)
+    load_execution_context_at(shell, cwd, zellij_session_override)
 }
 
-fn load_execution_context_at(shell: &dyn Shell, cwd: PathBuf) -> Result<ExecutionContext> {
+fn load_execution_context_at(
+    shell: &dyn Shell,
+    cwd: PathBuf,
+    zellij_session_override: Option<&str>,
+) -> Result<ExecutionContext> {
     let repo = RepoContext::discover(shell, &cwd)?;
     let mut config = Config::load_from_repo_root(&repo.repo_root)?;
-    config.zellij.session_name =
+    let configured_session_name =
         render_zellij_session_name(&config.zellij.session_name, &repo.github_repo)?;
+    config.zellij.session_name = resolve_zellij_session_name(
+        &configured_session_name,
+        zellij_session_override,
+        std::env::var("ZELLIJ_SESSION_NAME").ok().as_deref(),
+    );
     let runtime = RuntimeLayout::from_repo_root(&repo.repo_root);
     runtime.ensure_exists()?;
 
@@ -406,6 +430,23 @@ fn load_execution_context_at(shell: &dyn Shell, cwd: PathBuf) -> Result<Executio
         config,
         runtime,
     })
+}
+
+fn resolve_zellij_session_name(
+    configured_session_name: &str,
+    zellij_session_override: Option<&str>,
+    zellij_session_from_env: Option<&str>,
+) -> String {
+    zellij_session_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            zellij_session_from_env
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or(configured_session_name)
+        .to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -459,6 +500,39 @@ fn render_launch_agent_context(
         worktree_root,
         analysis_artifacts_dir,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_zellij_session_name;
+
+    #[test]
+    fn zellij_session_override_has_highest_priority() {
+        let resolved = resolve_zellij_session_name(
+            "settings-session",
+            Some("cli-session"),
+            Some("env-session"),
+        );
+        assert_eq!(resolved, "cli-session");
+    }
+
+    #[test]
+    fn zellij_session_from_env_beats_settings() {
+        let resolved = resolve_zellij_session_name("settings-session", None, Some("env-session"));
+        assert_eq!(resolved, "env-session");
+    }
+
+    #[test]
+    fn zellij_session_falls_back_to_settings() {
+        let resolved = resolve_zellij_session_name("settings-session", None, None);
+        assert_eq!(resolved, "settings-session");
+    }
+
+    #[test]
+    fn zellij_session_ignores_blank_override_and_env() {
+        let resolved = resolve_zellij_session_name("settings-session", Some("   "), Some(""));
+        assert_eq!(resolved, "settings-session");
+    }
 }
 
 fn shell_quote(value: &str) -> String {

@@ -47,7 +47,7 @@ Orchestration flow делится на две части:
 
 ## Zellij context
 
-В `settings.yml` фиксируются только stable names:
+В `settings.yml` фиксируются versioned fallback-поля launcher context:
 
 - `zellij.session_name`
 - `zellij.tab_name`
@@ -59,11 +59,15 @@ Bootstrap default:
 
 Runtime правила:
 
-- если session с таким именем уже существует, используется она
-- если session отсутствует, `ai-teamlead` создает ее
+- target session определяется в порядке:
+  `--zellij-session` -> `ZELLIJ_SESSION_NAME` -> `zellij.session_name`
+- если effective target session уже существует, используется она
+- если effective target session отсутствует, `ai-teamlead` создает ее
 - если нужный tab существует, используется он
 - если нужного tab нет, `ai-teamlead` создает его
 - для каждого запуска issue-analysis открывается новая pane
+- existing session с panes из другого GitHub repo считается недопустимой
+  и отклоняется до запуска
 
 После старта pane:
 
@@ -111,6 +115,7 @@ Bootstrap default для первой версии:
 
 - использовать существующую session
 - не создавать вторую session с тем же semantic назначением
+- перед запуском проверить, что existing session не смешивает несколько repo
 
 ### 2. Session была раньше, но сейчас отсутствует
 
@@ -134,6 +139,14 @@ Bootstrap default для первой версии:
 
 - использовать этот tab как launch context
 - открывать новую pane внутри него
+
+### 7. Existing session содержит panes другого repo
+
+Поведение:
+
+- launcher анализирует `pane_cwd` и repo context existing session
+- если обнаружен другой GitHub repo, запуск завершается ошибкой
+- shared multi-repo session не используется как launch context
 
 ### 5. Tab с нужным именем отсутствует
 
@@ -211,3 +224,5 @@ launch_agent:
 - literal-значения без placeholder допустимы
 - `${REPO}` рендерится из canonical GitHub repo slug
 - любые оставшиеся `${...}` считаются ошибкой конфигурации
+- полученное значение используется как fallback, если нет CLI override и
+  `ZELLIJ_SESSION_NAME`

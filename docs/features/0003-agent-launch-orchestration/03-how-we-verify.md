@@ -11,8 +11,10 @@
 - вторым аргументом в `launch-agent.sh` передается `issue_url`
 - branch/worktree подготавливаются до запуска реального агента
 - branch/worktree/artifacts naming читаются из `settings.yml`
-- `ai-teamlead` корректно находит или создает `zellij` session по
-  `session_name`
+- `ai-teamlead` корректно выбирает target `zellij` session по правилу
+  `args -> env -> settings`
+- `ai-teamlead` корректно находит или создает `zellij` session по effective
+  target session
 - `ai-teamlead` корректно находит или создает tab по `tab_name`
 - после запуска pane в runtime state записывается `pane_id`
 
@@ -30,9 +32,12 @@ Feature считается готовой, если:
 
 - `issue-analysis-flow` не является orchestration-документом
 - `launch-agent.sh` является versioned project-local script
-- `session_name` и `tab_name` являются stable semantic names
+- `zellij.session_name` является versioned fallback, а не единственным
+  источником target session
+- `zellij.tab_name` является stable semantic name
 - `pane_id` является runtime-only значением
 - runtime не генерирует отдельный launcher-script для pane
+- shared multi-repo existing session запрещена
 
 ## Сценарии проверки
 
@@ -50,25 +55,43 @@ Feature считается готовой, если:
 - используется существующая session
 - в нужном tab открывается новая pane
 
-### Сценарий 3. Session пропала
+### Сценарий 3. Команда запущена внутри `zellij`
+
+- `run` или `poll` запускается с `ZELLIJ_SESSION_NAME`
+- CLI override отсутствует
+- используется текущая session из окружения, а не fallback из `settings.yml`
+
+### Сценарий 4. CLI override задан явно
+
+- `run` или `poll` запускается с `--zellij-session`
+- в окружении также может присутствовать `ZELLIJ_SESSION_NAME`
+- используется session из CLI override
+
+### Сценарий 5. Session пропала
 
 - session с ожидаемым именем отсутствует
 - `run` или `poll` запускает recreate session
 - flow продолжается без ручного вмешательства
 
-### Сценарий 4. Session resurrect-нулась
+### Сценарий 6. Session resurrect-нулась
 
 - session существует под ожидаемым именем
 - `run` или `poll` использует ее как existing session
 - новая pane создается успешно
 
-### Сценарий 5. Несколько tab с одинаковым именем
+### Сценарий 7. Existing session содержит другой repo
+
+- launcher обнаруживает panes другого GitHub repo в выбранной session
+- запуск завершается ошибкой
+- issue не должна silently уходить в shared multi-repo session
+
+### Сценарий 8. Несколько tab с одинаковым именем
 
 - launcher обнаруживает неоднозначный tab context
 - запуск завершается ошибкой
 - issue не должна silently уходить в непредсказуемый pane
 
-### Сценарий 6. Launcher-script подготавливает analysis worktree
+### Сценарий 9. Launcher-script подготавливает analysis worktree
 
 - `run` или `poll` открывает новую pane
 - pane запускает `./.ai-teamlead/launch-agent.sh`
@@ -77,12 +100,12 @@ Feature считается готовой, если:
 - создает каталог versioned analysis-артефактов
 - только после этого может стартовать реальный агент
 
-### Сценарий 7. Измененные templates в `settings.yml`
+### Сценарий 10. Измененные templates в `settings.yml`
 
 - владелец репозитория меняет branch/worktree/artifacts templates
 - `launch-agent.sh` использует новые значения без изменения core-кода
 
-### Сценарий 8. `codex` недоступен
+### Сценарий 11. `codex` недоступен
 
 - launcher подготовил analysis worktree
 - `codex` отсутствует в окружении
@@ -93,7 +116,7 @@ Feature считается готовой, если:
 
 Минимально необходимо видеть:
 
-- какой `session_name` ожидался
+- какой effective `session_name` ожидался
 - какой `tab_name` ожидался
 - существовала ли session до запуска
 - был ли создан новый tab

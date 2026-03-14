@@ -15,6 +15,7 @@
 - `settings.yml` — repo-local конфиг `ai-teamlead`
 - `init.sh` — project-local bootstrap script для worktree
 - `launch-agent.sh` — project-local launcher script для issue-analysis session
+- `zellij/analysis-tab.kdl` — versioned template для analysis tab
 - `flows/issue-analysis-flow.md` — repo-local flow анализа issue
 - `flows/issue-analysis/README.md` — staged prompt index
 - `flows/issue-analysis/01-what-we-build.md` — prompt оси `Что строим`

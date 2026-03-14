@@ -239,6 +239,8 @@ GitHub слой для integration tests должен реализовывать
 - stub логирует каждый вызов:
   `argv`, `cwd`, время, exit code, stdout/stderr metadata
 - лог `gh` stub попадает в artifact bundle
+- runner сохраняет текущий `session_uuid`, snapshot issue/session runtime json и
+  tail `launch.log`, пока live-run еще не завершен
 - assertions могут проверять как возвращенные данные, так и факт вызова
   конкретных `gh` команд
 - обращение к реальному GitHub вместо stub считается ошибкой тестовой среды

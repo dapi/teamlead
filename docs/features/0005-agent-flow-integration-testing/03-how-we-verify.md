@@ -130,6 +130,8 @@ Feature считается готовой, если:
 - список mounted config paths
 - путь к `gh` invocation log
 - путь к workspace snapshot и artifact bundle
+- текущий `session_uuid`, snapshot `session.json` / issue index и tail
+  `launch.log` для еще не завершившегося live-run
 - ключевые переходы состояний:
   `snapshot_prepared`, `sandbox_ready`, `runtime_started`, `agent_running`,
   `asserting`, итоговый verdict

@@ -1116,6 +1116,36 @@ find_primary_issue_index() {
   find "$WORKSPACE_ROOT/.git/.ai-teamlead/issues" -maxdepth 1 -name '*.json' 2>/dev/null | sort | head -n 1
 }
 
+capture_session_progress() {
+  local issue_index
+  issue_index="$(find_primary_issue_index || true)"
+  if [[ -z "$issue_index" || ! -f "$issue_index" ]]; then
+    return 0
+  fi
+
+  cp -a "$issue_index" /artifacts/current-issue-index.json 2>/dev/null || true
+  local session_uuid
+  session_uuid="$(jq -r '.session_uuid' "$issue_index")"
+  printf '%s\n' "$session_uuid" > /artifacts/session_uuid.txt
+
+  local session_manifest="$WORKSPACE_ROOT/.git/.ai-teamlead/sessions/$session_uuid/session.json"
+  if [[ ! -f "$session_manifest" ]]; then
+    return 0
+  fi
+
+  cp -a "$session_manifest" /artifacts/current-session.json 2>/dev/null || true
+  local session_status
+  session_status="$(jq -r '.status' "$session_manifest")"
+  printf '%s\n' "$session_status" > /artifacts/current-session-status.txt
+  jq -r '.updated_at // empty' "$session_manifest" > /artifacts/current-session-updated-at.txt 2>/dev/null || true
+
+  local session_dir
+  session_dir="$(dirname "$session_manifest")"
+  if [[ -f "$session_dir/launch.log" ]]; then
+    tail -n 200 "$session_dir/launch.log" > /artifacts/current-launch-log-tail.txt 2>/dev/null || true
+  fi
+}
+
 wait_for_session_completion() {
   local deadline=$((SECONDS + "#,
         );
@@ -1123,6 +1153,7 @@ wait_for_session_completion() {
     script.push_str(
             r#"))
   while (( SECONDS <= deadline )); do
+    capture_session_progress
     local issue_index
     issue_index="$(find_primary_issue_index || true)"
     if [[ -n "$issue_index" && -f "$issue_index" ]]; then
@@ -1132,6 +1163,10 @@ wait_for_session_completion() {
       if [[ -f "$session_manifest" ]]; then
         local session_status
         session_status="$(jq -r '.status' "$session_manifest")"
+        if [[ ! -f /artifacts/agent-running.txt ]]; then
+          printf 'agent_running\n' > /artifacts/agent-running.txt
+          printf 'agent_running\n' >> /artifacts/state-transitions.log
+        fi
         printf '[%s] session_status=%s session_uuid=%s\n' "$(date -Iseconds)" "$session_status" "$session_uuid" >> /artifacts/state-transitions.log
         if [[ "$session_status" == "completed" ]]; then
           printf '%s\n' "$session_uuid" > /artifacts/session_uuid.txt
@@ -1190,6 +1225,7 @@ overall_exit=0
             script,
             "run_manifest_command {command_index} {quoted_command} || {{ overall_exit=\"$?\"; capture_runtime_artifacts; printf '%s\\n' \"$overall_exit\" > /artifacts/exit-code.txt; exit \"$overall_exit\"; }}"
         );
+        script.push_str("printf 'runtime_started\n' >> /artifacts/state-transitions.log\n");
         script.push_str(
             "wait_for_session_completion || { overall_exit=\"$?\"; capture_runtime_artifacts; printf '%s\\n' \"$overall_exit\" > /artifacts/exit-code.txt; exit \"$overall_exit\"; }\n",
         );
@@ -2088,6 +2124,10 @@ commands:
         assert!(command.contains("-e OPENAI_API_KEY"));
         assert!(command.contains("[projects.\"$HOME\"]"));
         assert!(command.contains("[projects.\"$WORKSPACE_ROOT\"]"));
+        assert!(command.contains("/artifacts/current-session.json"));
+        assert!(command.contains("/artifacts/current-launch-log-tail.txt"));
+        assert!(command.contains("runtime_started"));
+        assert!(command.contains("agent_running"));
     }
 
     #[test]

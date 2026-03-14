@@ -178,6 +178,12 @@ struct AgentProfileSpec {
     file_mounts: &'static [&'static str],
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ContainerMount {
+    host_path: PathBuf,
+    container_path: String,
+}
+
 pub fn plan_agent_flow_test(
     repo_root: &Path,
     git_dir: &Path,
@@ -365,7 +371,29 @@ fn run_sandbox_container(
         .to_string_lossy()
         .to_string();
     let container_binary_path = format!("/input/ai-teamlead-bin/{binary_name}");
-    let script = sandbox_entrypoint_script(plan, &container_binary_path)?;
+    let container_home = "/root";
+    let live_agent_mounts = resolve_container_mounts(plan.agent, &plan.preflight.mounted_paths);
+    let agent_binary_mount = resolve_agent_binary_mount(plan)?;
+    let container_agent_binary_path = match (
+        agent_binary_mount.as_ref(),
+        plan.preflight.binary_path.as_deref(),
+    ) {
+        (Some(mount), Some(binary_path)) => {
+            let binary_name = binary_path
+                .file_name()
+                .ok_or_else(|| anyhow!("failed to resolve live agent binary file name"))?
+                .to_string_lossy()
+                .to_string();
+            Some(format!("{}/{}", mount.container_path, binary_name))
+        }
+        _ => None,
+    };
+    let script = sandbox_entrypoint_script(
+        plan,
+        &container_binary_path,
+        container_agent_binary_path.as_deref(),
+        container_home,
+    )?;
 
     let mut args = vec!["run".to_string()];
     if !keep_sandbox {
@@ -385,6 +413,26 @@ fn run_sandbox_container(
     args.push(artifacts_mount);
     args.push("-v".to_string());
     args.push(binary_dir_mount);
+    if let Some(mount) = agent_binary_mount.as_ref() {
+        args.push("-v".to_string());
+        args.push(format!(
+            "{}:{}:ro",
+            mount.host_path.display(),
+            mount.container_path
+        ));
+    }
+    for mount in &live_agent_mounts {
+        args.push("-v".to_string());
+        args.push(format!(
+            "{}:{}:ro",
+            mount.host_path.display(),
+            mount.container_path
+        ));
+    }
+    for env_name in &plan.preflight.forwarded_env_vars {
+        args.push("-e".to_string());
+        args.push(env_name.clone());
+    }
     args.push(image.to_string());
     args.push("bash".to_string());
     args.push("-lc".to_string());
@@ -444,16 +492,12 @@ fn resolve_common_git_dir(git_dir: &Path) -> Result<PathBuf> {
 fn validate_scenario_fixtures(
     repo_root: &Path,
     manifest: &ScenarioManifest,
-    mode: AgentFlowMode,
-    agent: AgentFlowAgent,
+    _mode: AgentFlowMode,
+    _agent: AgentFlowAgent,
 ) -> Result<()> {
-    if mode != AgentFlowMode::Stub || agent != AgentFlowAgent::Stub {
-        return Ok(());
-    }
-
     let github_fixture = manifest
         .github_fixture_name()
-        .ok_or_else(|| anyhow!("stub scenario requires fixtures.github_stub"))?;
+        .ok_or_else(|| anyhow!("scenario requires fixtures.github_stub"))?;
     let fixture_path = repo_root.join(DEFAULT_FIXTURES_DIR).join(github_fixture);
     anyhow::ensure!(
         fixture_path.is_file(),
@@ -462,6 +506,65 @@ fn validate_scenario_fixtures(
         fixture_path.display()
     );
     Ok(())
+}
+
+fn resolve_agent_binary_mount(plan: &AgentFlowTestPlan) -> Result<Option<ContainerMount>> {
+    let Some(binary_path) = plan.preflight.binary_path.as_deref() else {
+        return Ok(None);
+    };
+    let host_dir = binary_path.parent().ok_or_else(|| {
+        anyhow!(
+            "failed to resolve parent directory for live agent binary {}",
+            binary_path.display()
+        )
+    })?;
+    Ok(Some(ContainerMount {
+        host_path: host_dir.to_path_buf(),
+        container_path: "/input/agent-bin".to_string(),
+    }))
+}
+
+fn resolve_container_mounts(
+    agent: AgentFlowAgent,
+    mounted_paths: &[PathBuf],
+) -> Vec<ContainerMount> {
+    let mut mounts = Vec::new();
+    for path in mounted_paths {
+        if let Some(container_path) = map_container_mount_path(agent, path) {
+            mounts.push(ContainerMount {
+                host_path: path.clone(),
+                container_path,
+            });
+        }
+    }
+    mounts
+}
+
+fn map_container_mount_path(agent: AgentFlowAgent, host_path: &Path) -> Option<String> {
+    let value = host_path.to_string_lossy();
+    match agent {
+        AgentFlowAgent::Stub => None,
+        AgentFlowAgent::Codex => {
+            if value.ends_with("/.codex")
+                || host_path.file_name().and_then(|v| v.to_str()) == Some(".codex")
+            {
+                Some("/root/.codex".to_string())
+            } else {
+                None
+            }
+        }
+        AgentFlowAgent::Claude => {
+            if value.ends_with("/.claude")
+                || host_path.file_name().and_then(|v| v.to_str()) == Some(".claude")
+            {
+                Some("/root/.claude".to_string())
+            } else if value.ends_with("/.config/claude") {
+                Some("/root/.config/claude".to_string())
+            } else {
+                None
+            }
+        }
+    }
 }
 
 fn gh_stub_script() -> String {
@@ -562,6 +665,8 @@ fn shell_single_quote(value: &str) -> String {
 fn sandbox_entrypoint_script(
     plan: &AgentFlowTestPlan,
     container_binary_path: &str,
+    container_agent_binary_path: Option<&str>,
+    container_home_dir: &str,
 ) -> Result<String> {
     let mut script = String::from(
         r#"set -euo pipefail
@@ -619,32 +724,108 @@ printf 'docker\n' > /artifacts/sandbox-runtime.txt
 "#,
     );
 
-    if plan.mode == AgentFlowMode::Stub && plan.agent == AgentFlowAgent::Stub {
-        let github_fixture = plan
-            .manifest
-            .github_fixture_name()
-            .ok_or_else(|| anyhow!("stub scenario requires fixtures.github_stub"))?;
-        script.push_str("mkdir -p \"$STUB_OUT_DIR\"\n");
-        script.push_str("cat > \"$WORKSPACE_BIN/gh\" <<'EOF'\n");
-        script.push_str(&gh_stub_script());
-        script.push_str("EOF\nchmod +x \"$WORKSPACE_BIN/gh\"\n");
-        script.push_str("cat > \"$WORKSPACE_BIN/codex\" <<'EOF'\n");
-        script.push_str(&agent_stub_script());
-        script.push_str(
-            "EOF\nchmod +x \"$WORKSPACE_BIN/codex\"\nln -sf codex \"$WORKSPACE_BIN/claude\"\n",
-        );
-        script.push_str("export AI_TEAMLEAD_STUB_OUT_DIR=\"$STUB_OUT_DIR\"\n");
-        script.push_str("export AI_TEAMLEAD_STUB_AI_TEAMLEAD_BIN=\"$WORKSPACE_BIN/ai-teamlead\"\n");
-        script.push_str("export AI_TEAMLEAD_STUB_AGENT_SLEEP=1\n");
-        script.push_str("export AI_TEAMLEAD_TEST_GH_LOG=\"/artifacts/gh.log\"\n");
-        let fixture_relative_path = format!("{DEFAULT_FIXTURES_DIR}/{github_fixture}");
-        let _ = writeln!(
-            script,
-            "export AI_TEAMLEAD_TEST_GH_SNAPSHOT=\"$WORKSPACE_ROOT/{}\"",
-            fixture_relative_path
-        );
-        script.push_str(
-            r#"if [[ ! -f "$AI_TEAMLEAD_TEST_GH_SNAPSHOT" ]]; then
+    let github_fixture = plan
+        .manifest
+        .github_fixture_name()
+        .ok_or_else(|| anyhow!("scenario requires fixtures.github_stub"))?;
+    let fixture_relative_path = format!("{DEFAULT_FIXTURES_DIR}/{github_fixture}");
+    let forwarded_env_vars = if plan.preflight.forwarded_env_vars.is_empty() {
+        "-".to_string()
+    } else {
+        plan.preflight.forwarded_env_vars.join(",")
+    };
+    let forwarded_mounts = {
+        let mounts = resolve_container_mounts(plan.agent, &plan.preflight.mounted_paths)
+            .into_iter()
+            .map(|mount| mount.container_path)
+            .collect::<Vec<_>>();
+        if mounts.is_empty() {
+            "-".to_string()
+        } else {
+            mounts.join(",")
+        }
+    };
+
+    script.push_str("mkdir -p \"$STUB_OUT_DIR\"\n");
+    script.push_str("cat > \"$WORKSPACE_BIN/gh\" <<'EOF'\n");
+    script.push_str(&gh_stub_script());
+    script.push_str("EOF\nchmod +x \"$WORKSPACE_BIN/gh\"\n");
+    script.push_str("export AI_TEAMLEAD_TEST_GH_LOG=\"/artifacts/gh.log\"\n");
+    let _ = writeln!(
+        script,
+        "export AI_TEAMLEAD_TEST_GH_SNAPSHOT=\"$WORKSPACE_ROOT/{}\"",
+        fixture_relative_path
+    );
+    let _ = writeln!(
+        script,
+        "export HOME={}",
+        shell_single_quote(container_home_dir)
+    );
+    let _ = writeln!(
+        script,
+        "printf '%s\\n' {} > /artifacts/agent-mode.txt",
+        shell_single_quote(plan.mode.as_str())
+    );
+    let _ = writeln!(
+        script,
+        "printf '%s\\n' {} > /artifacts/agent-profile.txt",
+        shell_single_quote(plan.agent.as_str())
+    );
+    let _ = writeln!(
+        script,
+        "printf '%s\\n' {} > /artifacts/auth-path.txt",
+        shell_single_quote(plan.preflight.auth_path.as_str())
+    );
+    let _ = writeln!(
+        script,
+        "printf '%s\\n' {} > /artifacts/forwarded-env-vars.txt",
+        shell_single_quote(&forwarded_env_vars)
+    );
+    let _ = writeln!(
+        script,
+        "printf '%s\\n' {} > /artifacts/forwarded-mounts.txt",
+        shell_single_quote(&forwarded_mounts)
+    );
+
+    match (plan.mode, plan.agent) {
+        (AgentFlowMode::Stub, AgentFlowAgent::Stub) => {
+            script.push_str("cat > \"$WORKSPACE_BIN/codex\" <<'EOF'\n");
+            script.push_str(&agent_stub_script());
+            script.push_str(
+                "EOF\nchmod +x \"$WORKSPACE_BIN/codex\"\nln -sf codex \"$WORKSPACE_BIN/claude\"\n",
+            );
+            script.push_str("export AI_TEAMLEAD_STUB_OUT_DIR=\"$STUB_OUT_DIR\"\n");
+            script.push_str(
+                "export AI_TEAMLEAD_STUB_AI_TEAMLEAD_BIN=\"$WORKSPACE_BIN/ai-teamlead\"\n",
+            );
+            script.push_str("export AI_TEAMLEAD_STUB_AGENT_SLEEP=1\n");
+        }
+        (AgentFlowMode::Live, AgentFlowAgent::Codex | AgentFlowAgent::Claude) => {
+            let live_binary_name = plan
+                .preflight
+                .binary_name
+                .as_deref()
+                .ok_or_else(|| anyhow!("live scenario requires resolved agent binary name"))?;
+            let container_agent_binary_path = container_agent_binary_path
+                .ok_or_else(|| anyhow!("live scenario requires mounted live agent binary"))?;
+            let _ = writeln!(
+                script,
+                "ln -sf {} \"$WORKSPACE_BIN/{}\"",
+                shell_single_quote(container_agent_binary_path),
+                live_binary_name
+            );
+        }
+        _ => {
+            bail!(
+                "unsupported sandbox launch pair mode='{}' agent='{}'",
+                plan.mode.as_str(),
+                plan.agent.as_str()
+            );
+        }
+    }
+
+    script.push_str(
+        r#"if [[ ! -f "$AI_TEAMLEAD_TEST_GH_SNAPSHOT" ]]; then
   echo "missing github fixture: $AI_TEAMLEAD_TEST_GH_SNAPSHOT" > /artifacts/missing-github-fixture.txt
   exit 42
 fi
@@ -656,8 +837,8 @@ find_primary_issue_index() {
 wait_for_session_completion() {
   local deadline=$((SECONDS + "#,
         );
-        script.push_str(&plan.timeout_seconds.to_string());
-        script.push_str(
+    script.push_str(&plan.timeout_seconds.to_string());
+    script.push_str(
             r#"))
   while (( SECONDS <= deadline )); do
     local issue_index
@@ -718,24 +899,24 @@ capture_runtime_artifacts() {
 
 overall_exit=0
 "#,
+    );
+
+    for (index, command) in plan.manifest.commands.iter().enumerate() {
+        let quoted_command = shell_single_quote(command);
+        let command_index = index + 1;
+        let _ = writeln!(
+            script,
+            "run_manifest_command {command_index} {quoted_command} || {{ overall_exit=\"$?\"; capture_runtime_artifacts; printf '%s\\n' \"$overall_exit\" > /artifacts/exit-code.txt; exit \"$overall_exit\"; }}"
         );
-        for (index, command) in plan.manifest.commands.iter().enumerate() {
-            let quoted_command = shell_single_quote(command);
-            let command_index = index + 1;
-            let _ = writeln!(
-                script,
-                "run_manifest_command {command_index} {quoted_command} || {{ overall_exit=\"$?\"; capture_runtime_artifacts; printf '%s\\n' \"$overall_exit\" > /artifacts/exit-code.txt; exit \"$overall_exit\"; }}"
-            );
-            script.push_str(
-                "wait_for_session_completion || { overall_exit=\"$?\"; capture_runtime_artifacts; printf '%s\\n' \"$overall_exit\" > /artifacts/exit-code.txt; exit \"$overall_exit\"; }\n",
-            );
-        }
         script.push_str(
-            r#"capture_runtime_artifacts
-printf '%s\n' "$overall_exit" > /artifacts/exit-code.txt
-"#,
+            "wait_for_session_completion || { overall_exit=\"$?\"; capture_runtime_artifacts; printf '%s\\n' \"$overall_exit\" > /artifacts/exit-code.txt; exit \"$overall_exit\"; }\n",
         );
     }
+    script.push_str(
+        r#"capture_runtime_artifacts
+printf '%s\n' "$overall_exit" > /artifacts/exit-code.txt
+"#,
+    );
 
     script.push_str(
         "git status --short --untracked-files=all > /artifacts/workspace-status-post.txt\n",
@@ -1479,6 +1660,79 @@ commands:
             temp.path().display()
         )));
         assert!(command.contains("bash -lc"));
+    }
+
+    #[test]
+    fn sandbox_run_for_live_codex_forwards_env_and_mounts() {
+        let temp = tempdir().expect("tempdir");
+        let artifacts = temp.path().join("artifacts");
+        let git_dir = temp.path().join("git");
+        let common_git_dir = temp.path().join("common-git");
+        let fake_binary = temp.path().join("ai-teamlead");
+        let agent_bin_dir = temp.path().join("agent-bin");
+        let agent_binary = agent_bin_dir.join("codex");
+        let codex_home = temp.path().join(".codex");
+        fs::create_dir_all(&agent_bin_dir).expect("agent bin dir");
+        fs::create_dir_all(&codex_home).expect("codex home");
+        fs::write(&fake_binary, "#!/usr/bin/env bash\n").expect("binary");
+        fs::write(&agent_binary, "#!/usr/bin/env bash\n").expect("agent binary");
+        let shell = RecordingShell::default();
+        let plan = AgentFlowTestPlan {
+            run_id: "run-id".into(),
+            manifest_path: temp.path().join("scenario.yml"),
+            manifest: ScenarioManifest {
+                name: "live-codex".into(),
+                description: None,
+                mode: Some(AgentFlowMode::Live),
+                agent: Some(AgentFlowAgent::Codex),
+                fixtures: serde_yaml::from_str("github_stub: basic.json").expect("fixtures"),
+                commands: vec!["ai-teamlead run 42".into()],
+                assertions: vec![],
+            },
+            agent: AgentFlowAgent::Codex,
+            mode: AgentFlowMode::Live,
+            keep_sandbox: false,
+            artifacts_dir: artifacts.clone(),
+            timeout_seconds: 30,
+            no_build: true,
+            preflight: PreflightSummary {
+                binary_name: Some("codex".into()),
+                binary_path: Some(agent_binary.clone()),
+                forwarded_env_vars: vec!["OPENAI_API_KEY".into()],
+                mounted_paths: vec![codex_home.clone()],
+                auth_path: AuthPath::ApiKey,
+            },
+        };
+
+        run_sandbox_container(
+            &shell,
+            DEFAULT_SANDBOX_IMAGE,
+            temp.path(),
+            &git_dir,
+            &common_git_dir,
+            &artifacts,
+            &fake_binary,
+            &plan,
+            None,
+            false,
+        )
+        .expect("sandbox");
+
+        let command = shell.commands().last().cloned().expect("command");
+        assert!(command.contains(&format!(
+            "-v {}:/input/agent-bin:ro",
+            agent_bin_dir.display()
+        )));
+        assert!(command.contains(&format!("-v {}:/root/.codex:ro", codex_home.display())));
+        assert!(command.contains("-e OPENAI_API_KEY"));
+    }
+
+    #[test]
+    fn maps_codex_subscription_mount_to_container_home() {
+        let mapped =
+            map_container_mount_path(AgentFlowAgent::Codex, Path::new("/home/test/.codex"))
+                .expect("mount");
+        assert_eq!(mapped, "/root/.codex");
     }
 
     #[test]

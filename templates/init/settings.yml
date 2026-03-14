@@ -1,36 +1,42 @@
-github:
-  project_id: "PVT_replace_me"
+# Repo-specific required value.
+# Replace this placeholder before the first poll/run against a real GitHub Project.
+#
+# github:
+#   project_id: "PVT_replace_me"
 
-issue_analysis_flow:
-  statuses:
-    backlog: "Backlog"
-    analysis_in_progress: "Analysis In Progress"
-    waiting_for_clarification: "Waiting for Clarification"
-    waiting_for_plan_review: "Waiting for Plan Review"
-    ready_for_implementation: "Ready for Implementation"
-    analysis_blocked: "Analysis Blocked"
-
-issue_implementation_flow:
-  statuses:
-    ready_for_implementation: "Ready for Implementation"
-    implementation_in_progress: "Implementation In Progress"
-    waiting_for_ci: "Waiting for CI"
-    waiting_for_code_review: "Waiting for Code Review"
-    implementation_blocked: "Implementation Blocked"
-
-runtime:
-  max_parallel: 1
-  poll_interval_seconds: 3600
-
-zellij:
-  session_name: "${REPO}"
-  tab_name: "issue-analysis"
-  layout: "compact"
-
-launch_agent:
-  analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
-  worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
-  analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
-  implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
-  implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
-  implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+# Runtime defaults below are applied by ai-teamlead when the active YAML does
+# not override them. Uncomment only the fields you want to change.
+#
+# issue_analysis_flow:
+#   statuses:
+#     backlog: "Backlog"
+#     analysis_in_progress: "Analysis In Progress"
+#     waiting_for_clarification: "Waiting for Clarification"
+#     waiting_for_plan_review: "Waiting for Plan Review"
+#     ready_for_implementation: "Ready for Implementation"
+#     analysis_blocked: "Analysis Blocked"
+#
+# issue_implementation_flow:
+#   statuses:
+#     ready_for_implementation: "Ready for Implementation"
+#     implementation_in_progress: "Implementation In Progress"
+#     waiting_for_ci: "Waiting for CI"
+#     waiting_for_code_review: "Waiting for Code Review"
+#     implementation_blocked: "Implementation Blocked"
+#
+# runtime:
+#   max_parallel: 1
+#   poll_interval_seconds: 3600
+#
+# zellij:
+#   session_name: "${REPO}"
+#   tab_name: "issue-analysis"
+#   layout: "compact"
+#
+# launch_agent:
+#   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
+#   worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+#   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+#   implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
+#   implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+#   implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"

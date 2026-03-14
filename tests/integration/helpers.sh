@@ -223,7 +223,43 @@ create_initialized_repo() {
     (
         cd "$repo_root"
         "$ai_teamlead_bin" init >/dev/null
-        sed -i '/^  layout: "compact"$/d' .ai-teamlead/settings.yml
+        cat > .ai-teamlead/settings.yml <<'EOF'
+github:
+  project_id: "PVT_test_project"
+
+issue_analysis_flow:
+  statuses:
+    backlog: "Backlog"
+    analysis_in_progress: "Analysis In Progress"
+    waiting_for_clarification: "Waiting for Clarification"
+    waiting_for_plan_review: "Waiting for Plan Review"
+    ready_for_implementation: "Ready for Implementation"
+    analysis_blocked: "Analysis Blocked"
+
+issue_implementation_flow:
+  statuses:
+    ready_for_implementation: "Ready for Implementation"
+    implementation_in_progress: "Implementation In Progress"
+    waiting_for_ci: "Waiting for CI"
+    waiting_for_code_review: "Waiting for Code Review"
+    implementation_blocked: "Implementation Blocked"
+
+runtime:
+  max_parallel: 1
+  poll_interval_seconds: 3600
+
+zellij:
+  session_name: "example"
+  tab_name: "issue-analysis"
+
+launch_agent:
+  analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
+  worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+  analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+  implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
+  implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+  implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+EOF
         git add .ai-teamlead .claude .codex init.sh
         git commit -q -m "bootstrap ai-teamlead"
     )

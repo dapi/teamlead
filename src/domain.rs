@@ -24,8 +24,7 @@ pub fn select_next_backlog_project_item<'a>(
         .iter()
         .filter(|item| item.matches_repo(owner, repo))
         .filter(|item| item.issue_state == "OPEN")
-        .filter(|item| item.status_name.as_deref() == Some(statuses.backlog.as_str()))
-        .next()
+        .find(|item| item.status_name.as_deref() == Some(statuses.backlog.as_str()))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

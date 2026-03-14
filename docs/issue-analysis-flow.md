@@ -773,18 +773,43 @@ Issue должна переводиться в `Analysis Blocked`, если:
 - точный шаблон вопросов на уточнение
 - точный шаблон финального пакета анализа
 - нужно ли вводить явные текстовые команды для оператора уже в первой версии
-- нужно ли позже возвращать machine-readable артефакты поверх истории
-  агентской сессии
+## Контракт завершения стадии
+
+Agent session сигналит core о результате анализа через CLI-команду:
+
+```
+ai-teamlead internal complete-stage <session_uuid> --outcome <outcome> --message <msg>
+```
+
+Допустимые значения `outcome`:
+
+- `plan-ready` — SDD-комплект собран, issue → `Waiting for Plan Review`
+- `needs-clarification` — нужны ответы, issue → `Waiting for Clarification`
+- `blocked` — технический блокер, issue → `Analysis Blocked`
+
+Команда инкапсулирует: git add/commit, git push, draft PR (для plan-ready),
+смену статуса в GitHub Project, обновление session.json.
+
+Агент НЕ выполняет git/gh операции самостоятельно.
+
+Спецификация: ADR-0020, `docs/adr/0020-agent-session-completion-signal.md`.
 
 ## Связанные документы
 
 - [docs/adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md](adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md)
 - [docs/adr/0019-conditional-sections-by-task-type-project-type-and-size.md](adr/0019-conditional-sections-by-task-type-project-type-and-size.md)
 - [docs/adr/0013-agent-session-history-as-dialog-source.md](adr/0013-agent-session-history-as-dialog-source.md)
+- [docs/adr/0020-agent-session-completion-signal.md](adr/0020-agent-session-completion-signal.md)
 - [docs/implementation-plan.md](./implementation-plan.md)
 - [docs/features/0001-ai-teamlead-cli/README.md](features/0001-ai-teamlead-cli/README.md)
 
 ## Журнал изменений
+
+### 2026-03-14
+
+- добавлен контракт завершения стадии `complete-stage` (ADR-0020)
+- закрыт открытый вопрос о machine-readable артефактах — решение через
+  CLI-команду `ai-teamlead internal complete-stage`
 
 ### 2026-03-13
 

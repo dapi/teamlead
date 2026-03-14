@@ -46,8 +46,8 @@ pub enum InternalCommand {
     },
     CompleteStage {
         session_uuid: String,
-        #[arg(long)]
-        outcome: String,
+        #[arg(long, value_enum)]
+        outcome: crate::complete_stage::StageOutcome,
         #[arg(long)]
         message: String,
     },

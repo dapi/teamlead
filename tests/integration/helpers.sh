@@ -220,13 +220,23 @@ install_gh_stub() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOG_FILE="${AI_TEAMLEAD_TEST_GH_LOG:?}"
-SNAPSHOT_FILE="${AI_TEAMLEAD_TEST_GH_SNAPSHOT:?}"
+LOG_FILE="__LOG_FILE__"
+SNAPSHOT_FILE="__SNAPSHOT_FILE__"
 ARGS="$*"
 printf 'gh %s\n' "$ARGS" >> "$LOG_FILE"
 
 if [[ "${1:-}" == "repo" && "${2:-}" == "view" ]]; then
     printf 'main\n'
+    exit 0
+fi
+
+if [[ "${1:-}" == "pr" && "${2:-}" == "list" ]]; then
+    printf '%s\n' "${AI_TEAMLEAD_TEST_GH_PR_LIST_RESULT:-0}"
+    exit 0
+fi
+
+if [[ "${1:-}" == "pr" && "${2:-}" == "create" ]]; then
+    printf '%s\n' "${AI_TEAMLEAD_TEST_GH_PR_CREATE_RESULT:-https://github.com/dapi/example/pull/99}"
     exit 0
 fi
 
@@ -237,9 +247,11 @@ fi
 
 cat "$SNAPSHOT_FILE"
 EOF
+    sed -i \
+        -e "s|__LOG_FILE__|$log_file|g" \
+        -e "s|__SNAPSHOT_FILE__|$snapshot_file|g" \
+        "$bin_dir/gh"
     chmod +x "$bin_dir/gh"
-    export AI_TEAMLEAD_TEST_GH_SNAPSHOT="$snapshot_file"
-    export AI_TEAMLEAD_TEST_GH_LOG="$log_file"
 }
 
 install_agent_stubs() {
@@ -283,6 +295,71 @@ printf '%s\n' "${AI_TEAMLEAD_WORKTREE_ROOT:-}" > "$OUT_DIR/worktree_root"
 printf '%s\n' "$PROMPT" > "$OUT_DIR/prompt.txt"
 
 sleep "${AI_TEAMLEAD_STUB_AGENT_SLEEP:-5}"
+EOF
+    chmod +x "$bin_dir/codex"
+    ln -sf codex "$bin_dir/claude"
+    export AI_TEAMLEAD_STUB_OUT_DIR="$out_dir"
+}
+
+install_complete_stage_agent_stub() {
+    local bin_dir="$1" out_dir="$2"
+    mkdir -p "$bin_dir" "$out_dir"
+    cat > "$bin_dir/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+OUT_DIR="${AI_TEAMLEAD_STUB_OUT_DIR:?}"
+TARGET_CD=""
+PROMPT=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --cd)
+            TARGET_CD="$2"
+            shift 2
+            ;;
+        --no-alt-screen)
+            shift
+            ;;
+        *)
+            PROMPT="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -n "$TARGET_CD" ]]; then
+    cd "$TARGET_CD"
+fi
+
+mkdir -p "${AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR:?}"
+cat > "${AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR}/README.md" <<'DOC'
+# Test artifact
+
+- generated from stub codex agent
+DOC
+
+printf 'invoked\n' > "$OUT_DIR/codex.invoked"
+printf '%s\n' "$PWD" > "$OUT_DIR/codex.cwd"
+printf '%s\n' "${AI_TEAMLEAD_ISSUE_URL:-}" > "$OUT_DIR/issue_url"
+printf '%s\n' "${AI_TEAMLEAD_SESSION_UUID:-}" > "$OUT_DIR/session_uuid"
+printf '%s\n' "${AI_TEAMLEAD_ANALYSIS_BRANCH:-}" > "$OUT_DIR/analysis_branch"
+printf '%s\n' "${AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR:-}" > "$OUT_DIR/analysis_artifacts_dir"
+printf '%s\n' "${AI_TEAMLEAD_WORKTREE_ROOT:-}" > "$OUT_DIR/worktree_root"
+printf '%s\n' "$PROMPT" > "$OUT_DIR/prompt.txt"
+
+if "${AI_TEAMLEAD_BIN:-ai-teamlead}" internal complete-stage \
+    "${AI_TEAMLEAD_SESSION_UUID:?}" \
+    --outcome plan-ready \
+    --message "stub analysis ready" \
+    >"$OUT_DIR/complete-stage.stdout" \
+    2>"$OUT_DIR/complete-stage.stderr"; then
+    printf '0\n' > "$OUT_DIR/complete-stage.exit_code"
+else
+    status=$?
+    printf '%s\n' "$status" > "$OUT_DIR/complete-stage.exit_code"
+    exit "$status"
+fi
 EOF
     chmod +x "$bin_dir/codex"
     ln -sf codex "$bin_dir/claude"

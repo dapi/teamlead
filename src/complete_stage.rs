@@ -2,14 +2,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
-use serde::Deserialize;
 
 use crate::config::{Config, FlowStatuses};
 use crate::github::{GhProjectClient, ProjectIssueItem};
 use crate::runtime::{RuntimeLayout, SessionManifest};
 use crate::shell::Shell;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, clap::ValueEnum)]
 pub enum StageOutcome {
     PlanReady,
     NeedsClarification,
@@ -17,14 +16,11 @@ pub enum StageOutcome {
 }
 
 impl StageOutcome {
-    pub fn parse(value: &str) -> Result<Self> {
-        match value {
-            "plan-ready" => Ok(Self::PlanReady),
-            "needs-clarification" => Ok(Self::NeedsClarification),
-            "blocked" => Ok(Self::Blocked),
-            other => bail!(
-                "invalid outcome: {other}. Expected: plan-ready, needs-clarification, blocked"
-            ),
+    pub fn target_status<'a>(&self, statuses: &'a FlowStatuses) -> &'a str {
+        match self {
+            Self::PlanReady => &statuses.waiting_for_plan_review,
+            Self::NeedsClarification => &statuses.waiting_for_clarification,
+            Self::Blocked => &statuses.analysis_blocked,
         }
     }
 
@@ -33,14 +29,6 @@ impl StageOutcome {
             Self::PlanReady => "plan-ready",
             Self::NeedsClarification => "needs-clarification",
             Self::Blocked => "blocked",
-        }
-    }
-
-    pub fn target_status<'a>(&self, statuses: &'a FlowStatuses) -> &'a str {
-        match self {
-            Self::PlanReady => &statuses.waiting_for_plan_review,
-            Self::NeedsClarification => &statuses.waiting_for_clarification,
-            Self::Blocked => &statuses.analysis_blocked,
         }
     }
 }
@@ -58,7 +46,7 @@ struct ExecutionContext {
 pub fn run_complete_stage(
     shell: &dyn Shell,
     session_uuid: &str,
-    outcome: &str,
+    outcome: &StageOutcome,
     message: &str,
 ) -> Result<()> {
     let repo_root = resolve_repo_root(shell)?;
@@ -71,7 +59,7 @@ pub fn run_complete_stage(
         artifacts_dir: std::env::var("AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR")
             .unwrap_or_else(|_| "specs/issues".to_string()),
         message: message.trim().to_string(),
-        outcome: StageOutcome::parse(outcome)?,
+        outcome: outcome.clone(),
     };
     execute_complete_stage(shell, session_uuid, context)
 }
@@ -139,9 +127,9 @@ fn execute_complete_stage(
     let target_status = context
         .outcome
         .target_status(&config.issue_analysis_flow.statuses);
-    update_project_status(shell, &context.repo_root, &config, &manifest, target_status)?;
-    runtime.update_session_status(session_uuid, "completed")?;
+    update_project_status(shell, &context.repo_root, &manifest, target_status)?;
     runtime.update_issue_flow_status(manifest.issue_number, target_status)?;
+    runtime.update_session_status(session_uuid, "completed")?;
 
     println!(
         "complete-stage: issue=#{} outcome={} status={}",
@@ -214,29 +202,33 @@ fn create_draft_pr_if_needed(
     title: &str,
     body: &str,
 ) -> Result<()> {
-    if let Ok(existing_json) = shell.run(
+    match shell.run(
         worktree_root,
         "gh",
-        &["pr", "list", "--head", branch, "--json", "number,url"],
+        &[
+            "pr", "list", "--head", branch, "--json", "number", "--jq", "length",
+        ],
     ) {
-        let existing: Vec<ExistingPr> =
-            serde_json::from_str(&existing_json).context("failed to parse existing PR list")?;
-        if let Some(pr) = existing.first() {
-            eprintln!(
-                "complete-stage: draft PR already exists for branch {}: {}",
-                branch, pr.url
-            );
+        Ok(count) if count.trim() != "0" => {
+            eprintln!("complete-stage: draft PR already exists for branch {branch}");
+            return Ok(());
+        }
+        Ok(_) => {} // count == 0, proceed to create
+        Err(e) => {
+            eprintln!("complete-stage: warning: failed to check existing PRs: {e}");
+            eprintln!("complete-stage: skipping PR creation");
             return Ok(());
         }
     }
 
-    match shell.run(
+    let result = shell.run(
         worktree_root,
         "gh",
         &["pr", "create", "--draft", "--title", title, "--body", body],
-    ) {
+    );
+    match result {
         Ok(url) => println!("complete-stage: created draft PR: {url}"),
-        Err(error) => eprintln!("complete-stage: warning: failed to create draft PR: {error}"),
+        Err(e) => eprintln!("complete-stage: warning: failed to create draft PR: {e}"),
     }
     Ok(())
 }
@@ -244,7 +236,6 @@ fn create_draft_pr_if_needed(
 fn update_project_status(
     shell: &dyn Shell,
     repo_root: &Path,
-    config: &Config,
     manifest: &SessionManifest,
     target_status: &str,
 ) -> Result<()> {
@@ -260,8 +251,6 @@ fn update_project_status(
         &snapshot.status_field_id,
         option_id,
     )?;
-
-    let _ = config;
     Ok(())
 }
 
@@ -335,11 +324,6 @@ fn build_pr_body(
     body
 }
 
-#[derive(Debug, Deserialize)]
-struct ExistingPr {
-    url: String,
-}
-
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -350,7 +334,57 @@ mod tests {
     use crate::config::ZellijConfig;
     use crate::repo::RepoContext;
     use crate::runtime::RuntimeLayout;
+    use clap::ValueEnum;
     use tempfile::tempdir;
+
+    fn sample_statuses() -> FlowStatuses {
+        FlowStatuses {
+            backlog: "Backlog".into(),
+            analysis_in_progress: "Analysis In Progress".into(),
+            waiting_for_clarification: "Waiting for Clarification".into(),
+            waiting_for_plan_review: "Waiting for Plan Review".into(),
+            ready_for_implementation: "Ready for Implementation".into(),
+            analysis_blocked: "Analysis Blocked".into(),
+        }
+    }
+
+    #[test]
+    fn parses_valid_outcomes_via_value_enum() {
+        let variants = StageOutcome::value_variants();
+        assert_eq!(variants.len(), 3);
+
+        let plan_ready = StageOutcome::from_str("plan-ready", true).unwrap();
+        assert_eq!(plan_ready, StageOutcome::PlanReady);
+
+        let needs_clar = StageOutcome::from_str("needs-clarification", true).unwrap();
+        assert_eq!(needs_clar, StageOutcome::NeedsClarification);
+
+        let blocked = StageOutcome::from_str("blocked", true).unwrap();
+        assert_eq!(blocked, StageOutcome::Blocked);
+    }
+
+    #[test]
+    fn rejects_invalid_outcome_via_value_enum() {
+        let result = StageOutcome::from_str("unknown", true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn maps_outcome_to_correct_status() {
+        let statuses = sample_statuses();
+        assert_eq!(
+            StageOutcome::PlanReady.target_status(&statuses),
+            "Waiting for Plan Review"
+        );
+        assert_eq!(
+            StageOutcome::NeedsClarification.target_status(&statuses),
+            "Waiting for Clarification"
+        );
+        assert_eq!(
+            StageOutcome::Blocked.target_status(&statuses),
+            "Analysis Blocked"
+        );
+    }
 
     #[derive(Default)]
     struct FakeShell {
@@ -400,47 +434,6 @@ mod tests {
         ) -> Result<()> {
             self.run(cwd, program, args).map(|_| ())
         }
-    }
-
-    #[test]
-    fn parses_stage_outcome_values() {
-        assert!(matches!(
-            StageOutcome::parse("plan-ready").expect("plan-ready"),
-            StageOutcome::PlanReady
-        ));
-        assert!(matches!(
-            StageOutcome::parse("needs-clarification").expect("needs-clarification"),
-            StageOutcome::NeedsClarification
-        ));
-        assert!(matches!(
-            StageOutcome::parse("blocked").expect("blocked"),
-            StageOutcome::Blocked
-        ));
-    }
-
-    #[test]
-    fn maps_stage_outcome_to_target_status() {
-        let statuses = FlowStatuses {
-            backlog: "Backlog".into(),
-            analysis_in_progress: "Analysis In Progress".into(),
-            waiting_for_clarification: "Waiting for Clarification".into(),
-            waiting_for_plan_review: "Waiting for Plan Review".into(),
-            ready_for_implementation: "Ready for Implementation".into(),
-            analysis_blocked: "Analysis Blocked".into(),
-        };
-
-        assert_eq!(
-            StageOutcome::PlanReady.target_status(&statuses),
-            "Waiting for Plan Review"
-        );
-        assert_eq!(
-            StageOutcome::NeedsClarification.target_status(&statuses),
-            "Waiting for Clarification"
-        );
-        assert_eq!(
-            StageOutcome::Blocked.target_status(&statuses),
-            "Analysis Blocked"
-        );
     }
 
     #[test]
@@ -551,7 +544,10 @@ mod tests {
             )
             .with_response("git commit -m analysis(#15): SDD готов", "")
             .with_response("git push origin analysis/issue-15", "")
-            .with_response("gh pr list --head analysis/issue-15 --json number,url", "[]")
+            .with_response(
+                "gh pr list --head analysis/issue-15 --json number --jq length",
+                "0",
+            )
             .with_response(
                 "gh pr create --draft --title analysis(#15): SDD готов --body Ref https://github.com/dapi/ai-teamlead/issues/15",
                 "https://github.com/dapi/ai-teamlead/pull/15",

@@ -225,7 +225,6 @@ struct SandboxNetworkSettings {
 
 pub fn plan_agent_flow_test(
     repo_root: &Path,
-    git_dir: &Path,
     request: &AgentFlowTestRequest,
 ) -> Result<AgentFlowTestPlan> {
     let manifest_path = resolve_manifest_path(repo_root, &request.scenario)?;
@@ -245,11 +244,7 @@ pub fn plan_agent_flow_test(
         .artifacts_dir
         .clone()
         .map(|path| normalize_repo_relative_path(repo_root, path))
-        .unwrap_or_else(|| {
-            git_dir
-                .join(".ai-teamlead")
-                .join(DEFAULT_ARTIFACTS_DIR_NAME)
-        });
+        .unwrap_or_else(|| default_artifacts_dir(repo_root));
 
     Ok(AgentFlowTestPlan {
         run_id,
@@ -906,6 +901,13 @@ mkdir -p "$HOME"
             script.push_str(
                 "if [[ -d /input/live-home/.codex && ! -e \"$HOME/.codex\" ]]; then cp -a /input/live-home/.codex \"$HOME/.codex\"; fi\n",
             );
+            script.push_str("mkdir -p \"$HOME/.codex\"\n");
+            script.push_str("cat >> \"$HOME/.codex/config.toml\" <<EOF\n");
+            script.push_str("[projects.\"$HOME\"]\n");
+            script.push_str("trust_level = \"trusted\"\n\n");
+            script.push_str("[projects.\"$WORKSPACE_ROOT\"]\n");
+            script.push_str("trust_level = \"trusted\"\n");
+            script.push_str("EOF\n");
         }
         AgentFlowAgent::Claude => {
             script.push_str(
@@ -1479,6 +1481,12 @@ fn normalize_repo_relative_path(repo_root: &Path, path: PathBuf) -> PathBuf {
     }
 }
 
+fn default_artifacts_dir(repo_root: &Path) -> PathBuf {
+    repo_root
+        .join(".ai-teamlead")
+        .join(DEFAULT_ARTIFACTS_DIR_NAME)
+}
+
 fn verify_sandbox_result(plan: &AgentFlowTestPlan, result: &SandboxRunResult) -> Result<()> {
     for assertion in &plan.manifest.assertions {
         let assertion_type = assertion
@@ -1777,7 +1785,6 @@ assertions:
 
         let plan = plan_agent_flow_test(
             repo_root,
-            repo_root,
             &AgentFlowTestRequest {
                 scenario: "stub-smoke".into(),
                 agent: None,
@@ -1803,6 +1810,55 @@ assertions:
     }
 
     #[test]
+    fn plan_uses_repo_local_artifacts_dir_by_default() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path().join("repo");
+        let git_dir = temp.path().join("git-common").join("worktrees").join("feature");
+        fs::create_dir_all(&repo_root).expect("repo root");
+        fs::create_dir_all(&git_dir).expect("git dir");
+        write_fixture(&repo_root, "basic.json", "{}\n");
+        write_manifest(
+            &repo_root,
+            "stub-smoke.yml",
+            r#"
+name: stub-smoke
+mode: stub
+agent: stub
+fixtures:
+  github_stub: basic.json
+commands:
+  - ai-teamlead run 42
+assertions:
+  - type: exit_code
+    equals: 0
+"#,
+        );
+
+        let plan = plan_agent_flow_test(
+            &repo_root,
+            &AgentFlowTestRequest {
+                scenario: "stub-smoke".into(),
+                agent: None,
+                mode: None,
+                keep_sandbox: false,
+                artifacts_dir: None,
+                timeout_seconds: None,
+                no_build: false,
+            },
+        )
+        .expect("stub plan");
+
+        assert_eq!(
+            plan.artifacts_dir,
+            repo_root.join(".ai-teamlead").join(DEFAULT_ARTIFACTS_DIR_NAME)
+        );
+        assert_ne!(
+            plan.artifacts_dir,
+            git_dir.join(".ai-teamlead").join(DEFAULT_ARTIFACTS_DIR_NAME)
+        );
+    }
+
+    #[test]
     fn rejects_stub_plan_without_github_fixture() {
         let temp = tempdir().expect("tempdir");
         write_manifest(
@@ -1818,7 +1874,6 @@ commands:
         );
 
         let error = plan_agent_flow_test(
-            temp.path(),
             temp.path(),
             &AgentFlowTestRequest {
                 scenario: "missing-fixture".into(),
@@ -2031,6 +2086,8 @@ commands:
             codex_home.display()
         )));
         assert!(command.contains("-e OPENAI_API_KEY"));
+        assert!(command.contains("[projects.\"$HOME\"]"));
+        assert!(command.contains("[projects.\"$WORKSPACE_ROOT\"]"));
     }
 
     #[test]

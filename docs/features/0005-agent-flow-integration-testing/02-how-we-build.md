@@ -283,7 +283,7 @@ integration_tests:
     sandbox_runtime: docker
     image: ai-teamlead-agent-flow-test:local
     default_timeout_seconds: 900
-    artifacts_dir: ".git/.ai-teamlead/test-runs"
+    artifacts_dir: ".ai-teamlead/test-runs"
     scenario_root: ".ai-teamlead/tests/agent-flow"
     github:
       mode: stub

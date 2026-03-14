@@ -51,7 +51,6 @@ fn run_test_agent_flow(shell: &dyn Shell, args: TestAgentFlowArgs) -> Result<()>
     let repo = RepoContext::discover(shell, &cwd)?;
     let plan = plan_agent_flow_test(
         &repo.repo_root,
-        &repo.git_dir,
         &AgentFlowTestRequest {
             scenario: args.scenario,
             agent: args.agent,

@@ -286,11 +286,8 @@ fn validate_approved_analysis_artifacts(
     context: &ExecutionContext,
     issue_number: u64,
 ) -> Result<()> {
-    let artifacts_dir = render_analysis_artifacts_dir(
-        &context.config,
-        &context.repo.github_repo,
-        issue_number,
-    );
+    let artifacts_dir =
+        render_analysis_artifacts_dir(&context.config, &context.repo.github_repo, issue_number);
     let readme_path = context.repo.repo_root.join(artifacts_dir).join("README.md");
     let content = fs::read_to_string(&readme_path).with_context(|| {
         format!(
@@ -812,16 +809,13 @@ fn shell_quote(value: &str) -> String {
 
 #[cfg(test)]
 mod launch_agent_tests {
-    use super::{
-        ExecutionContext, LaunchAgentContext, validate_stage_preconditions,
-    };
+    use super::{ExecutionContext, LaunchAgentContext, validate_stage_preconditions};
     use crate::config::{
-        Config, FlowStatuses, GithubConfig, ImplementationFlowStatuses,
-        IssueAnalysisFlowConfig, IssueImplementationFlowConfig, LaunchAgentConfig, RuntimeConfig,
-        ZellijConfig,
+        Config, FlowStatuses, GithubConfig, ImplementationFlowStatuses, IssueAnalysisFlowConfig,
+        IssueImplementationFlowConfig, LaunchAgentConfig, RuntimeConfig, ZellijConfig,
     };
-    use crate::repo::RepoContext;
     use crate::domain::FlowStage;
+    use crate::repo::RepoContext;
     use crate::runtime::RuntimeLayout;
     use crate::templates::render_template;
     use std::path::PathBuf;
@@ -948,8 +942,8 @@ mod launch_agent_tests {
                     worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}".into(),
                     analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}".into(),
                     implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}".into(),
-                    implementation_worktree_root_template:
-                        "${HOME}/worktrees/${REPO}/${BRANCH}".into(),
+                    implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+                        .into(),
                     implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}".into(),
                 },
             },

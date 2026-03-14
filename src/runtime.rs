@@ -71,13 +71,15 @@ impl RuntimeLayout {
                 pane_id: "pending".to_string(),
             },
         };
-        let mut index = self.load_issue_index(issue_number)?.unwrap_or(IssueSessionIndex {
-            issue_number,
-            bindings: IssueStageBindings::default(),
-            legacy_session_uuid: None,
-            last_known_flow_status: flow_status.to_string(),
-            updated_at: timestamp.clone(),
-        });
+        let mut index = self
+            .load_issue_index(issue_number)?
+            .unwrap_or(IssueSessionIndex {
+                issue_number,
+                bindings: IssueStageBindings::default(),
+                legacy_session_uuid: None,
+                last_known_flow_status: flow_status.to_string(),
+                updated_at: timestamp.clone(),
+            });
         index.bindings.set(stage, session_uuid.clone());
         index.legacy_session_uuid = None;
         index.last_known_flow_status = flow_status.to_string();

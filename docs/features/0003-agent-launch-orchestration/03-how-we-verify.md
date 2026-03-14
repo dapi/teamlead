@@ -148,6 +148,7 @@ Feature считается готовой, если:
 - какой branch создания session был выбран:
   `existing session`, `custom layout`, `default fallback`
 - какой versioned tab-layout contract использовался для analysis tab
+- отдельно ли завершился шаг `create session` до шага `add analysis tab`
 - какой `pane_id` был привязан к `session_uuid`
 
 ## Журнал изменений

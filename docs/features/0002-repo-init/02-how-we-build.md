@@ -29,6 +29,7 @@
 - `./.ai-teamlead/README.md`
 - `./.ai-teamlead/init.sh`
 - `./.ai-teamlead/launch-agent.sh`
+- `./.ai-teamlead/zellij/analysis-tab.kdl`
 - `./.ai-teamlead/flows/issue-analysis-flow.md`
 - `./.ai-teamlead/flows/issue-analysis/README.md`
 - `./.ai-teamlead/flows/issue-analysis/01-what-we-build.md`
@@ -98,6 +99,8 @@
   донастройки
 - `zellij.session_name` bootstrap-ится как template `${REPO}`
 - `zellij.tab_name` по умолчанию равно `issue-analysis`
+- `./.ai-teamlead/zellij/analysis-tab.kdl` bootstrap-ится как versioned template
+  для analysis tab с placeholders `${TAB_NAME}` и `${PANE_ENTRYPOINT}`
 - `launch_agent.analysis_branch_template` по умолчанию равно
   `analysis/issue-${ISSUE_NUMBER}`
 - `launch_agent.worktree_root_template` по умолчанию равно
@@ -136,6 +139,8 @@ Versioned project contract layer в первой версии выглядит �
   settings.yml
   init.sh
   launch-agent.sh
+  zellij/
+    analysis-tab.kdl
   flows/
     issue-analysis-flow.md
     issue-analysis/

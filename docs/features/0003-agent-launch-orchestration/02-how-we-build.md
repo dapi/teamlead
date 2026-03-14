@@ -178,7 +178,8 @@ Bootstrap default для первой версии:
 - runtime может генерировать только технический shim `pane-entrypoint.sh` и
   `launch-layout.kdl`, но не несет в них branch/worktree логику
 - если `launch-layout.kdl` используется для analysis tab, его source of truth
-  должен быть versioned contract/template, а не hardcoded bare layout
+  должен быть versioned contract/template `.ai-teamlead/zellij/analysis-tab.kdl`,
+  а не hardcoded bare layout
 
 ## Направление эволюции
 
@@ -245,3 +246,11 @@ launch_agent:
 Поэтому для analysis tab нужен отдельный versioned source of truth для
 tab-level UX. Попытка восстановить такой UX из live-state уже открытой session
 считается хрупкой и не входит в контракт первой версии.
+
+В текущем контракте таким источником служит project-local template:
+
+- `./.ai-teamlead/zellij/analysis-tab.kdl`
+- runtime `launch-layout.kdl` является только отрендеренной копией этого
+  template для конкретного `session_uuid`
+- обязательные placeholders template:
+  `${TAB_NAME}` и `${PANE_ENTRYPOINT}`

@@ -55,8 +55,6 @@ session/tab.
 - как именно конкретный репозиторий назовет analysis branch и worktree root
 - нужна ли в следующей версии отдельная machine-readable обратная связь от
   `launch-agent.sh` в core orchestration
-- какой versioned contract задает внешний вид analysis tab, чтобы он выглядел
-  как родной tab текущей `zellij` session, а не как техническая bare-вкладка
 
 ## Журнал изменений
 
@@ -69,3 +67,5 @@ session/tab.
 - добавлена ссылка на ADR по `zellij.layout` и fallback-path новой session
 - добавлено требование заказчика: analysis tab должна выглядеть как родной tab
   текущей session
+ - зафиксирован project-local template `.ai-teamlead/zellij/analysis-tab.kdl`
+   как versioned contract для analysis tab

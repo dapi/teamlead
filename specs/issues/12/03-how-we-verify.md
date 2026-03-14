@@ -127,5 +127,7 @@ Integration / smoke:
   `existing session`, `custom layout`, `default fallback`.
 - Для анализа tab должно быть видно, из какого versioned layout contract он был
   собран.
+- Ошибка шага `create session` не должна маскироваться под ошибку
+  `add analysis tab`.
 - Для ручной отладки остаются runtime-артефакты в `.git/.ai-teamlead/sessions`
   и manifest binding с `session_id`, `tab_id`, `pane_id`.

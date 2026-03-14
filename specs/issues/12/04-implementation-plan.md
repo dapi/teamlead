@@ -116,6 +116,7 @@ fallback-path для создания новой `zellij` session без bare ge
 Результат этапа:
 
 - у analysis tab есть versioned layout contract или template;
+- contract хранится в `./.ai-teamlead/zellij/analysis-tab.kdl`;
 - launcher рендерит runtime layout из этого contract;
 - unit/smoke-проверки могут различить "родной tab" и технический bare-tab.
 

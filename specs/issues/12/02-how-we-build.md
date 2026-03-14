@@ -76,6 +76,8 @@ zellij:
 - базовая session наследует user/default layout обычным путем;
 - analysis tab использует versioned template с подстановкой `tab_name` и пути к
   `pane-entrypoint.sh`;
+- в текущем решении source of truth хранится в
+  `./.ai-teamlead/zellij/analysis-tab.kdl`;
 - если проекту нужны `compact bar`, плагины и другие tab-level элементы, они
   описываются в этом template явно.
 

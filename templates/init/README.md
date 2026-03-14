@@ -15,6 +15,7 @@
 - `settings.yml` — repo-local конфиг `ai-teamlead`
 - `init.sh` — project-local bootstrap script для worktree
 - `launch-agent.sh` — project-local launcher script для issue-analysis session
+- `zellij/analysis-tab.kdl` — versioned template для analysis tab
 - `flows/issue-analysis-flow.md` — repo-local flow анализа issue
 
 Базовый системный контракт flow остается в документации `ai-teamlead`, а файлы

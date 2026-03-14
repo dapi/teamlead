@@ -10,6 +10,7 @@
 - `init` создает `./.ai-teamlead/README.md`
 - `init` создает `./.ai-teamlead/init.sh`
 - `init` создает `./.ai-teamlead/launch-agent.sh`
+- `init` создает `./.ai-teamlead/zellij/analysis-tab.kdl`
 - `init` создает `./.ai-teamlead/flows/issue-analysis-flow.md`
 - `init` создает staged prompts в `./.ai-teamlead/flows/issue-analysis/`
 - `init` создает `./.claude/README.md`

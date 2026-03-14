@@ -179,7 +179,7 @@
 
 | Файл | Кто создает | Где лежит | Для чего нужен |
 | --- | --- | --- | --- |
-| `launch-layout.kdl` | `ai-teamlead` | `.git/.ai-teamlead/sessions/<session_uuid>/` | входной layout для первого запуска `zellij`; описывает стартовый tab/pane |
+| `launch-layout.kdl` | `ai-teamlead` | `.git/.ai-teamlead/sessions/<session_uuid>/` | runtime-rendered layout для analysis tab конкретного запуска; строится из versioned template `.ai-teamlead/zellij/analysis-tab.kdl` |
 | `pane-entrypoint.sh` | `ai-teamlead` | `.git/.ai-teamlead/sessions/<session_uuid>/` | тонкий runtime-shim; переходит в repo root, выставляет `AI_TEAMLEAD_BIN` и вызывает versioned `./.ai-teamlead/launch-agent.sh <session_uuid> <issue_url>` |
 | `session.json` | `ai-teamlead` | `.git/.ai-teamlead/sessions/<session_uuid>/` | durable session-binding между issue, `session_uuid` и `zellij` identifiers |
 | `session-layout.kdl` | `zellij` | `~/.cache/zellij/contract_version_1/session_info/<session_name>/` | snapshot текущего layout сессии для восстановления; отражает уже итоговый `cwd` и tab structure |
@@ -190,7 +190,9 @@
 `launch-layout.kdl`:
 
 - это то, что `ai-teamlead` подает в `zellij` на вход
-- описывает минимальный стартовый layout для создания новой session/tab/pane
+- описывает analysis tab для конкретного запуска
+- рендерится из versioned project-local template
+  `./.ai-teamlead/zellij/analysis-tab.kdl`
 - ссылается на `pane-entrypoint.sh`
 
 `session-layout.kdl`:
@@ -219,14 +221,16 @@
 
 Для одной issue цепочка выглядит так:
 
-1. `ai-teamlead` создает `launch-layout.kdl`.
-2. `ai-teamlead` создает `pane-entrypoint.sh`.
-3. `zellij` стартует pane по `launch-layout.kdl`.
-4. pane запускает `pane-entrypoint.sh`.
-5. `pane-entrypoint.sh` вызывает versioned
+1. `ai-teamlead` читает `./.ai-teamlead/zellij/analysis-tab.kdl`.
+2. `ai-teamlead` создает `launch-layout.kdl`.
+3. `ai-teamlead` создает `pane-entrypoint.sh`.
+4. если session отсутствует, `ai-teamlead` сначала создает базовую session.
+5. `zellij` добавляет analysis tab по `launch-layout.kdl`.
+6. pane запускает `pane-entrypoint.sh`.
+7. `pane-entrypoint.sh` вызывает versioned
    `./.ai-teamlead/launch-agent.sh <session_uuid> <issue_url>`.
-6. `launch-agent.sh` готовит worktree и запускает реального агента.
-7. `zellij` сохраняет собственные snapshot-файлы:
+8. `launch-agent.sh` готовит worktree и запускает реального агента.
+9. `zellij` сохраняет собственные snapshot-файлы:
    - `session-layout.kdl`
    - `session-metadata.kdl`
 

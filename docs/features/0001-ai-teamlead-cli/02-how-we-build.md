@@ -219,10 +219,15 @@ Repo-local runtime-артефакты хранятся в:
 `zellij` launcher работает так:
 
 - создает `launch-layout.kdl` и тонкий `pane-entrypoint.sh` в session-директории
+- рендерит `launch-layout.kdl` из versioned project-local template
+  `./.ai-teamlead/zellij/analysis-tab.kdl`
 - если zellij session еще не существует, запускает новую session через
-  `zellij --session <name> -n <layout>`
+  `zellij --session <name>` или
+  `zellij --session <name> --layout <layout-name>`, если задан `zellij.layout`
+- после создания новой session launcher отдельно ждет появления session и
+  только затем добавляет analysis tab
 - если session уже существует, добавляет tab через
-  `zellij --session <name> --layout <layout>`
+  `zellij action new-tab --layout <launch-layout.kdl>` в target session
 - launcher создает новую pane для конкретного запуска issue-analysis
 - `pane-entrypoint.sh` только задает repo context и передает путь к бинарю
   `ai-teamlead`

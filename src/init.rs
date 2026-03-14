@@ -10,6 +10,7 @@ const SETTINGS_TEMPLATE: &str = include_str!("../templates/init/settings.yml");
 const PROJECT_INIT_TEMPLATE: &str = include_str!("../templates/init/init.sh");
 const LAUNCH_AGENT_TEMPLATE: &str = include_str!("../templates/init/launch-agent.sh");
 const ISSUE_ANALYSIS_FLOW_TEMPLATE: &str = include_str!("../templates/init/issue-analysis-flow.md");
+const ANALYSIS_TAB_TEMPLATE: &str = include_str!("../templates/init/zellij/analysis-tab.kdl");
 const ISSUE_ANALYSIS_README_TEMPLATE: &str =
     include_str!("../templates/init/issue-analysis/README.md");
 const ISSUE_ANALYSIS_WHAT_TEMPLATE: &str =
@@ -31,6 +32,8 @@ pub fn init_project_files(paths: &ProjectPaths) -> Result<InitReport> {
     let settings_template = render_settings_template();
     fs::create_dir_all(&paths.customization_root)
         .with_context(|| format!("failed to create {}", paths.customization_root.display()))?;
+    fs::create_dir_all(&paths.zellij_dir)
+        .with_context(|| format!("failed to create {}", paths.zellij_dir.display()))?;
     fs::create_dir_all(&paths.flows_dir)
         .with_context(|| format!("failed to create {}", paths.flows_dir.display()))?;
     fs::create_dir_all(&paths.issue_analysis_dir)
@@ -50,6 +53,12 @@ pub fn init_project_files(paths: &ProjectPaths) -> Result<InitReport> {
     write_if_missing(
         &paths.readme_path,
         PROJECT_README_TEMPLATE,
+        &mut report.created,
+        &mut report.skipped,
+    )?;
+    write_if_missing(
+        &paths.analysis_tab_template_path,
+        ANALYSIS_TAB_TEMPLATE,
         &mut report.created,
         &mut report.skipped,
     )?;
@@ -205,9 +214,10 @@ mod tests {
         let paths = ProjectPaths::from_repo_root(&repo_root);
 
         let first = init_project_files(&paths).expect("first init");
-        assert_eq!(first.created.len(), 12);
+        assert_eq!(first.created.len(), 13);
         assert!(paths.settings_path.exists());
         assert!(paths.readme_path.exists());
+        assert!(paths.analysis_tab_template_path.exists());
         assert!(paths.project_init_path.exists());
         assert!(paths.launch_agent_path.exists());
         assert!(paths.issue_analysis_flow_path.exists());
@@ -225,9 +235,13 @@ mod tests {
 
         let second = init_project_files(&paths).expect("second init");
         assert_eq!(second.created.len(), 0);
-        assert_eq!(second.skipped.len(), 12);
+        assert_eq!(second.skipped.len(), 13);
 
         let settings = std::fs::read_to_string(&paths.settings_path).expect("settings");
         assert!(settings.contains("session_name: \"${REPO}\""));
+        let analysis_tab = std::fs::read_to_string(&paths.analysis_tab_template_path)
+            .expect("analysis tab template");
+        assert!(analysis_tab.contains("${TAB_NAME}"));
+        assert!(analysis_tab.contains("${PANE_ENTRYPOINT}"));
     }
 }

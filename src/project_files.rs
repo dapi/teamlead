@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 pub struct ProjectPaths {
     pub repo_root: PathBuf,
     pub customization_root: PathBuf,
+    pub zellij_dir: PathBuf,
+    pub analysis_tab_template_path: PathBuf,
     pub settings_path: PathBuf,
     pub project_init_path: PathBuf,
     pub launch_agent_path: PathBuf,
@@ -26,6 +28,8 @@ impl ProjectPaths {
     pub fn from_repo_root(repo_root: &Path) -> Self {
         let repo_root = repo_root.to_path_buf();
         let customization_root = repo_root.join(".ai-teamlead");
+        let zellij_dir = customization_root.join("zellij");
+        let analysis_tab_template_path = zellij_dir.join("analysis-tab.kdl");
         let settings_path = customization_root.join("settings.yml");
         let project_init_path = customization_root.join("init.sh");
         let launch_agent_path = customization_root.join("launch-agent.sh");
@@ -46,6 +50,8 @@ impl ProjectPaths {
         Self {
             repo_root,
             customization_root,
+            zellij_dir,
+            analysis_tab_template_path,
             settings_path,
             project_init_path,
             launch_agent_path,
@@ -77,6 +83,11 @@ mod tests {
         let paths = ProjectPaths::from_repo_root(Path::new("/repo"));
         assert_eq!(paths.repo_root, Path::new("/repo"));
         assert_eq!(paths.customization_root, Path::new("/repo/.ai-teamlead"));
+        assert_eq!(paths.zellij_dir, Path::new("/repo/.ai-teamlead/zellij"));
+        assert_eq!(
+            paths.analysis_tab_template_path,
+            Path::new("/repo/.ai-teamlead/zellij/analysis-tab.kdl")
+        );
         assert_eq!(
             paths.settings_path,
             Path::new("/repo/.ai-teamlead/settings.yml")

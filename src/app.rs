@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -7,7 +7,9 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 
 use crate::cli::{Cli, Command, InternalCommand};
-use crate::complete_stage::run_complete_stage;
+use crate::complete_stage::{
+    finalize_merged_implementation, run_complete_stage, tracked_pr_is_merged,
+};
 use crate::config::Config;
 use crate::domain::{
     FlowStage, decide_run_stage, parse_issue_ref, select_next_backlog_project_item,
@@ -64,7 +66,7 @@ fn run_poll(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
     let context = load_execution_context(shell, zellij_session_override)?;
     let github = GhProjectClient::new(shell);
     let zellij = ZellijLauncher::new(shell);
-    match run_poll_cycle(&context, &github, &zellij)? {
+    match run_poll_cycle(shell, &context, &github, &zellij)? {
         PollCycleOutcome::NoEligibleIssue { project_title } => {
             println!(
                 "poll: no eligible backlog issues for repo={}/{} in project={}",
@@ -101,7 +103,7 @@ fn run_loop(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
 
     loop {
         println!("loop: cycle={cycle_number} started");
-        match run_poll_cycle(&context, &github, &zellij) {
+        match run_poll_cycle(shell, &context, &github, &zellij) {
             Ok(PollCycleOutcome::NoEligibleIssue { project_title }) => {
                 println!(
                     "loop: cycle={cycle_number} no eligible backlog issues in project={}",
@@ -143,9 +145,11 @@ enum PollCycleOutcome {
 struct LaunchOutcome {
     issue_number: u64,
     session_uuid: String,
+    launched: bool,
 }
 
 fn run_poll_cycle(
+    shell: &dyn Shell,
     context: &ExecutionContext,
     github: &GhProjectClient<'_>,
     zellij: &ZellijLauncher<'_>,
@@ -163,7 +167,7 @@ fn run_poll_cycle(
         });
     };
 
-    let launch = run_issue_entrypoint(context, github, zellij, &snapshot, issue, false)?;
+    let launch = run_issue_entrypoint(shell, context, github, zellij, &snapshot, issue, false)?;
     Ok(PollCycleOutcome::Launched(launch))
 }
 
@@ -190,20 +194,29 @@ fn run_manual_run(
         })
         .ok_or_else(|| anyhow::anyhow!("issue #{issue_number} is not linked to the project"))?;
 
-    let launch = run_issue_entrypoint(&context, &github, &zellij, &snapshot, issue, debug)?;
-    println!(
-        "run: issue=#{} launched in zellij session_uuid={}",
-        launch.issue_number, launch.session_uuid
-    );
-    print_zellij_launch_target(
-        &context.runtime,
-        &launch.session_uuid,
-        &context.config.zellij,
-    );
+    let launch =
+        run_issue_entrypoint(shell, &context, &github, &zellij, &snapshot, issue, debug)?;
+    if launch.launched {
+        println!(
+            "run: issue=#{} launched in zellij session_uuid={}",
+            launch.issue_number, launch.session_uuid
+        );
+        print_zellij_launch_target(
+            &context.runtime,
+            &launch.session_uuid,
+            &context.config.zellij,
+        );
+    } else {
+        println!(
+            "run: issue=#{} finalized without launch session_uuid={}",
+            launch.issue_number, launch.session_uuid
+        );
+    }
     Ok(())
 }
 
 fn run_issue_entrypoint(
+    shell: &dyn Shell,
     context: &ExecutionContext,
     github: &GhProjectClient<'_>,
     zellij: &ZellijLauncher<'_>,
@@ -233,6 +246,12 @@ fn run_issue_entrypoint(
     let stage = decision
         .stage
         .expect("allowed run decision must include stage");
+
+    if let Some(outcome) =
+        maybe_finalize_merged_implementation(shell, context, issue, current_status)?
+    {
+        return Ok(outcome);
+    }
 
     if let Err(error) = validate_stage_preconditions(context, issue.issue_number, stage) {
         if stage == FlowStage::Implementation {
@@ -268,6 +287,7 @@ fn run_issue_entrypoint(
     Ok(LaunchOutcome {
         issue_number: issue.issue_number,
         session_uuid: manifest.session_uuid,
+        launched: true,
     })
 }
 
@@ -393,14 +413,15 @@ fn prepare_session_manifest(
             &snapshot.status_field_id,
             snapshot.option_id_by_name(target_status)?,
         )?;
-        return context.runtime.create_claim_binding(
+        let manifest = context.runtime.create_claim_binding(
             &context.repo,
             &context.config.github.project_id,
             &context.config.zellij,
             issue.issue_number,
             stage,
             target_status,
-        );
+        )?;
+        return persist_stage_workspace(context, &manifest.session_uuid, issue.issue_number, stage);
     }
 
     let issue_index = context
@@ -444,7 +465,67 @@ fn prepare_session_manifest(
         .runtime
         .update_issue_flow_status(issue.issue_number, target_status)?;
 
-    Ok(manifest)
+    persist_stage_workspace(context, &manifest.session_uuid, issue.issue_number, stage)
+}
+
+fn persist_stage_workspace(
+    context: &ExecutionContext,
+    session_uuid: &str,
+    issue_number: u64,
+    stage: FlowStage,
+) -> Result<SessionManifest> {
+    let launch_context = render_launch_agent_context(context, issue_number, stage)?;
+    context.runtime.update_stage_workspace(
+        session_uuid,
+        &launch_context.branch,
+        Path::new(&launch_context.worktree_root),
+        &launch_context.artifacts_dir,
+    )
+}
+
+fn maybe_finalize_merged_implementation(
+    shell: &dyn Shell,
+    context: &ExecutionContext,
+    issue: &ProjectIssueItem,
+    current_status: &str,
+) -> Result<Option<LaunchOutcome>> {
+    if current_status != context.config.issue_implementation_flow.statuses.waiting_for_code_review {
+        return Ok(None);
+    }
+
+    let Some(issue_index) = context.runtime.load_issue_index(issue.issue_number)? else {
+        return Ok(None);
+    };
+    let Some(session_uuid) = issue_index.session_uuid_for_stage(FlowStage::Implementation) else {
+        return Ok(None);
+    };
+    let Some(manifest) = context.runtime.load_session_manifest(session_uuid)? else {
+        return Ok(None);
+    };
+    if manifest.stage != FlowStage::Implementation || manifest.tracked_pr_number.is_none() {
+        return Ok(None);
+    }
+    if !tracked_pr_is_merged(shell, &context.repo.repo_root, &manifest)? {
+        return Ok(None);
+    }
+
+    let target_status = finalize_merged_implementation(
+        shell,
+        &context.repo.repo_root,
+        &context.runtime,
+        &context.config,
+        &manifest,
+    )?;
+    println!(
+        "run: issue=#{} reconciled merged implementation PR -> {}",
+        issue.issue_number, target_status
+    );
+
+    Ok(Some(LaunchOutcome {
+        issue_number: issue.issue_number,
+        session_uuid: manifest.session_uuid,
+        launched: false,
+    }))
 }
 
 fn mark_issue_as_blocked(
@@ -925,6 +1006,7 @@ mod launch_agent_tests {
                         implementation_in_progress: "Implementation In Progress".into(),
                         waiting_for_ci: "Waiting for CI".into(),
                         waiting_for_code_review: "Waiting for Code Review".into(),
+                        done: "Done".into(),
                         implementation_blocked: "Implementation Blocked".into(),
                     },
                 },

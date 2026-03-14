@@ -9,8 +9,8 @@
 - implementation runtime не перезаписывает analysis runtime-binding;
 - implementation branch/worktree naming читается из `settings.yml`;
 - finalization contract корректно переводит issue в
-  `Waiting for CI`, `Waiting for Code Review`, `Implementation In Progress` или
-  `Implementation Blocked`;
+  `Waiting for CI`, `Waiting for Code Review`, `Done`,
+  `Implementation In Progress` или `Implementation Blocked`;
 - draft PR и CI checks участвуют в status transitions implementation stage.
 
 ## Критерии готовности
@@ -64,6 +64,13 @@ Feature считается готовой, если:
 - finalization переводит issue в `Implementation Blocked`;
 - runtime diagnostics позволяют повторный запуск после снятия блокера.
 
+### Сценарий 6. Post-merge reconcile
+
+- issue находится в `Waiting for Code Review`;
+- tracked implementation PR уже merged;
+- повторный `run <issue>` или `complete-stage --outcome merged` переводит issue
+  в `Done` без нового agent launch.
+
 ## Диагностика и наблюдаемость
 
 Минимально необходимо видеть:
@@ -73,4 +80,5 @@ Feature считается готовой, если:
 - какой implementation branch/worktree выбран;
 - какой outcome передан в finalization;
 - какой PR связан с issue;
-- какие checks считаются обязательными для перехода к code review.
+- какие checks считаются обязательными для перехода к code review;
+- почему merged reconciliation завершилась в `Done` или не сработала.

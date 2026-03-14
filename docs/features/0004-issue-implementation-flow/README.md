@@ -42,13 +42,16 @@
 - [docs/adr/0024-stage-aware-run-dispatch.md](../../adr/0024-stage-aware-run-dispatch.md)
 - [docs/adr/0025-stage-aware-runtime-bindings.md](../../adr/0025-stage-aware-runtime-bindings.md)
 - [docs/adr/0026-stage-aware-complete-stage.md](../../adr/0026-stage-aware-complete-stage.md)
+- [docs/adr/0027-post-merge-implementation-lifecycle.md](../../adr/0027-post-merge-implementation-lifecycle.md)
 
 ## Открытые вопросы
 
 - нужен ли отдельный implementation prompt для разных типов задач или в первой
   версии достаточно одного project-local prompt entrypoint;
 - должен ли перевод PR из draft в ready-for-review происходить внутри
-  finalization command или оставаться явным human gate.
+  finalization command или оставаться явным human gate;
+- потребуется ли в будущем отдельный post-merge flow для deploy/release path
+  поверх базового terminal status `Done`.
 
 ## Журнал изменений
 

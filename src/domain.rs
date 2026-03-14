@@ -182,6 +182,7 @@ mod tests {
             implementation_in_progress: "Implementation In Progress".into(),
             waiting_for_ci: "Waiting for CI".into(),
             waiting_for_code_review: "Waiting for Code Review".into(),
+            done: "Done".into(),
             implementation_blocked: "Implementation Blocked".into(),
         }
     }

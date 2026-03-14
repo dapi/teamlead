@@ -158,7 +158,8 @@ Flow реализации и handoff после принятия плана вы
 - `run` сам определяет, что issue уже находится в implementation lifecycle;
 - реализация опирается на approved analysis artifacts;
 - implementation stage ведет issue через `Implementation In Progress`,
-  `Waiting for CI`, `Waiting for Code Review` и `Implementation Blocked`.
+  `Waiting for CI`, `Waiting for Code Review`, `Done` и
+  `Implementation Blocked`.
 
 ## Статусы проекта
 
@@ -181,6 +182,7 @@ Flow реализации и handoff после принятия плана вы
 - `Implementation In Progress`
 - `Waiting for CI`
 - `Waiting for Code Review`
+- `Done`
 - `Implementation Blocked`
 
 ## Конфигурация
@@ -232,6 +234,7 @@ issue_implementation_flow:
     implementation_in_progress: "Implementation In Progress"
     waiting_for_ci: "Waiting for CI"
     waiting_for_code_review: "Waiting for Code Review"
+    done: "Done"
     implementation_blocked: "Implementation Blocked"
 
 runtime:

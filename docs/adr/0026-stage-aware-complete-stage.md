@@ -42,6 +42,7 @@ Implementation outcomes:
 
 - `ready-for-ci`
 - `ready-for-review`
+- `merged`
 - `needs-rework`
 - `blocked`
 
@@ -87,3 +88,4 @@ Implementation outcomes:
 ### 2026-03-14
 
 - `complete-stage` расширен до stage-aware контракта для implementation flow
+- добавлен implementation outcome `merged` для terminal post-merge finalization

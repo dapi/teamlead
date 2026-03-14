@@ -156,6 +156,8 @@ pub struct ImplementationFlowStatuses {
     pub implementation_in_progress: String,
     pub waiting_for_ci: String,
     pub waiting_for_code_review: String,
+    #[serde(default = "default_done_status")]
+    pub done: String,
     pub implementation_blocked: String,
 }
 
@@ -166,9 +168,14 @@ impl Default for ImplementationFlowStatuses {
             implementation_in_progress: "Implementation In Progress".into(),
             waiting_for_ci: "Waiting for CI".into(),
             waiting_for_code_review: "Waiting for Code Review".into(),
+            done: default_done_status(),
             implementation_blocked: "Implementation Blocked".into(),
         }
     }
+}
+
+fn default_done_status() -> String {
+    "Done".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -234,6 +241,7 @@ issue_implementation_flow:
     implementation_in_progress: "Implementation In Progress"
     waiting_for_ci: "Waiting for CI"
     waiting_for_code_review: "Waiting for Code Review"
+    done: "Done"
     implementation_blocked: "Implementation Blocked"
 
 runtime:

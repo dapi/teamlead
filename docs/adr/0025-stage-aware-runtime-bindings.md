@@ -16,6 +16,8 @@
 - analysis binding нельзя терять после перехода к coding stage;
 - implementation stage нужен собственный reusable binding;
 - `run` должен понимать, какой binding искать при re-entry.
+- post-merge reconciliation требует хранить identity tracked PR и workspace
+  metadata после `ready-for-ci` / `ready-for-review`.
 
 ## Решение
 
@@ -27,7 +29,10 @@ Runtime model становится stage-aware.
 - `issues/<issue_number>.json` хранит binding отдельно по stage;
 - для каждого stage у одной issue допускается не более одного активного
   binding;
-- analysis и implementation binding не перезаписывают друг друга.
+- analysis и implementation binding не перезаписывают друг друга;
+- implementation session дополнительно может хранить `stage_branch`,
+  `stage_worktree_root`, `stage_artifacts_dir`, `tracked_pr_number` и
+  `tracked_pr_url`.
 
 Минимальная форма issue index:
 
@@ -86,3 +91,5 @@ Runtime model становится stage-aware.
 ### 2026-03-14
 
 - runtime binding обобщен до stage-aware модели
+- runtime schema расширена tracked PR metadata и workspace coordinates для
+  post-merge lifecycle

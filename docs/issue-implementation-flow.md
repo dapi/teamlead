@@ -13,6 +13,7 @@
 
 - изменения реализованы, запушены и ждут обязательные CI checks;
 - изменения готовы к human code review;
+- merged implementation PR закрывает issue и переводит ее в terminal state;
 - реализация возвращена на доработку;
 - реализация заблокирована технической или продуктовой проблемой.
 
@@ -31,6 +32,7 @@
 
 - issue переведена в `Waiting for CI`;
 - или issue переведена в `Waiting for Code Review`;
+- или issue переведена в `Done` и закрыта после merge tracked PR;
 - или issue возвращена в `Implementation In Progress`;
 - или issue переведена в `Implementation Blocked`.
 
@@ -46,9 +48,8 @@
 ## Вне scope
 
 - merge automation;
-- deploy, release и post-merge operation flow;
+- deploy, release и расширенный post-merge operation flow;
 - автоматическое принятие code review;
-- автоматическое закрытие issue после merge;
 - параллельные implementation PR для одной issue.
 
 ## Политика развития
@@ -127,7 +128,10 @@ Implementation flow может стартовать только если approv
    обязательные CI checks.
 4. `Waiting for Code Review`
    Значение: обязательные quality gates пройдены, issue готова к human review.
-5. `Implementation Blocked`
+5. `Done`
+   Значение: tracked implementation PR merged, issue закрыта, бизнес-lifecycle
+   implementation stage завершен.
+6. `Implementation Blocked`
    Значение: реализация не может продолжаться без внешнего вмешательства.
 
 ## Правила переходов
@@ -139,6 +143,7 @@ Implementation flow может стартовать только если approv
 - `Implementation In Progress` -> `Implementation Blocked`
 - `Waiting for CI` -> `Waiting for Code Review`
 - `Waiting for CI` -> `Implementation In Progress`
+- `Waiting for Code Review` -> `Done`
 - `Waiting for Code Review` -> `Implementation In Progress`
 - `Implementation Blocked` -> `Implementation In Progress`
 
@@ -148,7 +153,7 @@ Implementation flow может стартовать только если approv
   без coding stage;
 - прямой переход из `Implementation In Progress` в `Waiting for Code Review`
   без PR/CI contract;
-- автоматический merge и автоматическое закрытие issue в рамках этого flow.
+- прямой переход из `Implementation In Progress` в `Done` без merge tracked PR.
 
 ## Условия входа
 
@@ -193,8 +198,25 @@ Issue может быть запущена через implementation flow тол
 `Implementation Blocked`:
 
 - повторный `run` допускается только как явное operator-intent действие;
-- issue переводится обратно в `Implementation In Progress`;
+- issue с merged tracked PR при статусе `Waiting for Code Review`
+  терминализируется в `Done` без нового coding launch;
+- в остальных случаях issue переводится обратно в `Implementation In Progress`;
 - stage-specific binding и implementation branch lifecycle переиспользуются.
+
+## Tracked implementation PR
+
+Post-merge path опирается не на эвристику по любому merge commit, а на явно
+сохраненный tracked PR.
+
+Минимальный runtime-контракт:
+
+- implementation session хранит `tracked_pr_number`;
+- рядом сохраняются `stage_branch`, `stage_worktree_root` и
+  `stage_artifacts_dir`;
+- `ready-for-ci` и `ready-for-review` path обязаны зафиксировать identity
+  draft/review PR в runtime;
+- если tracked PR metadata отсутствует, issue не может быть автоматически
+  закрыта post-merge path и требует явного ручного reconcile.
 
 ### 3. Реализация
 
@@ -215,6 +237,7 @@ Implementation stage завершается через stage-aware internal CLI-
 
 - `ready-for-ci`
 - `ready-for-review`
+- `merged`
 - `needs-rework`
 - `blocked`
 
@@ -223,11 +246,20 @@ Implementation stage завершается через stage-aware internal CLI-
 - `ready-for-ci`:
   - коммитит и пушит implementation branch;
   - создает или переиспользует draft PR;
+  - сохраняет tracked PR metadata в runtime;
   - переводит issue в `Waiting for CI`.
 - `ready-for-review`:
   - подтверждает, что обязательные CI checks зеленые;
   - при необходимости переводит PR в ready-for-review;
+  - сохраняет или переиспользует tracked PR metadata;
   - переводит issue в `Waiting for Code Review`.
+- `merged`:
+  - подтверждает, что именно tracked implementation PR merged в default branch;
+  - переводит issue в `Done`;
+  - закрывает GitHub issue;
+  - помечает implementation session как completed;
+  - выполняет best-effort cleanup implementation worktree и local branch
+    без отката terminal business result.
 - `needs-rework`:
   - сохраняет изменения и диагностику;
   - возвращает issue в `Implementation In Progress`.
@@ -246,7 +278,8 @@ Human gate обязателен минимум в двух местах:
 
 - зеленый CI не заменяет human review;
 - review feedback может вернуть issue в `Implementation In Progress`;
-- merge и закрытие issue находятся вне scope текущего flow.
+- merge tracked PR завершает implementation lifecycle в пределах этого flow;
+- release и deploy после merge остаются отдельным будущим flow.
 
 ## Протокол оператора
 
@@ -263,6 +296,9 @@ Human gate обязателен минимум в двух местах:
    `Implementation Blocked`.
 4. Принять реализацию к review.
    Результат: issue оказывается в `Waiting for Code Review`.
+5. Завершить lifecycle после merge tracked PR.
+   Результат: `run <issue>` или `complete-stage --outcome merged` переводит
+   issue в `Done`, закрывает ее и выполняет cleanup.
 
 ## Конфигурация
 
@@ -275,6 +311,7 @@ issue_implementation_flow:
     implementation_in_progress: "Implementation In Progress"
     waiting_for_ci: "Waiting for CI"
     waiting_for_code_review: "Waiting for Code Review"
+    done: "Done"
     implementation_blocked: "Implementation Blocked"
 
 launch_agent:
@@ -293,6 +330,7 @@ launch_agent:
 - [adr/0024-stage-aware-run-dispatch.md](./adr/0024-stage-aware-run-dispatch.md)
 - [adr/0025-stage-aware-runtime-bindings.md](./adr/0025-stage-aware-runtime-bindings.md)
 - [adr/0026-stage-aware-complete-stage.md](./adr/0026-stage-aware-complete-stage.md)
+- [adr/0027-post-merge-implementation-lifecycle.md](./adr/0027-post-merge-implementation-lifecycle.md)
 
 ## Журнал изменений
 
@@ -302,3 +340,4 @@ launch_agent:
 - зафиксирован единый `run <issue>` как stage-aware entrypoint
 - добавлена status model для implementation lifecycle
 - добавлен stage-aware finalization contract для implementation outcomes
+- добавлен terminal post-merge path с `Done`, tracked PR metadata и cleanup

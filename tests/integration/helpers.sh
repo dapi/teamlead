@@ -247,12 +247,22 @@ if [[ "${1:-}" == "repo" && "${2:-}" == "view" ]]; then
 fi
 
 if [[ "${1:-}" == "pr" && "${2:-}" == "list" ]]; then
-    printf '%s\n' "${AI_TEAMLEAD_TEST_GH_PR_LIST_RESULT:-0}"
+    printf '%s\n' "${AI_TEAMLEAD_TEST_GH_PR_LIST_RESULT:-[]}"
+    exit 0
+fi
+
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' "${AI_TEAMLEAD_TEST_GH_PR_VIEW_RESULT:-{\"number\":0,\"url\":\"\",\"state\":\"OPEN\",\"mergedAt\":null,\"isDraft\":true,\"headRefName\":\"\",\"baseRefName\":\"main\"}}"
     exit 0
 fi
 
 if [[ "${1:-}" == "pr" && "${2:-}" == "create" ]]; then
     printf '%s\n' "${AI_TEAMLEAD_TEST_GH_PR_CREATE_RESULT:-https://github.com/dapi/example/pull/99}"
+    exit 0
+fi
+
+if [[ "${1:-}" == "issue" && "${2:-}" == "close" ]]; then
+    printf '%s\n' "${AI_TEAMLEAD_TEST_GH_ISSUE_CLOSE_RESULT:-}"
     exit 0
 fi
 

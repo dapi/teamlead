@@ -1,8 +1,9 @@
+use std::fs;
 use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 
 use crate::cli::{Cli, Command, InternalCommand};
@@ -233,6 +234,14 @@ fn run_issue_entrypoint(
         .stage
         .expect("allowed run decision must include stage");
 
+    if let Err(error) = validate_stage_preconditions(context, issue.issue_number, stage) {
+        if stage == FlowStage::Implementation {
+            mark_issue_as_blocked(context, github, snapshot, issue, stage);
+        }
+        return Err(error)
+            .with_context(|| format!("failed to validate {} preconditions", stage.as_str()));
+    }
+
     let manifest =
         prepare_session_manifest(context, github, snapshot, issue, current_status, stage)?;
     let issue_url = format!(
@@ -260,6 +269,90 @@ fn run_issue_entrypoint(
         issue_number: issue.issue_number,
         session_uuid: manifest.session_uuid,
     })
+}
+
+fn validate_stage_preconditions(
+    context: &ExecutionContext,
+    issue_number: u64,
+    stage: FlowStage,
+) -> Result<()> {
+    match stage {
+        FlowStage::Analysis => Ok(()),
+        FlowStage::Implementation => validate_approved_analysis_artifacts(context, issue_number),
+    }
+}
+
+fn validate_approved_analysis_artifacts(
+    context: &ExecutionContext,
+    issue_number: u64,
+) -> Result<()> {
+    let artifacts_dir = render_analysis_artifacts_dir(
+        &context.config,
+        &context.repo.github_repo,
+        issue_number,
+    );
+    let readme_path = context.repo.repo_root.join(artifacts_dir).join("README.md");
+    let content = fs::read_to_string(&readme_path).with_context(|| {
+        format!(
+            "approved analysis artifacts are missing: {}",
+            readme_path.display()
+        )
+    })?;
+
+    ensure_markdown_metadata_value(&content, "Статус согласования", "approved")?;
+    ensure_markdown_metadata_present(&content, "Approved By")?;
+    ensure_markdown_metadata_present(&content, "Approved At")?;
+    Ok(())
+}
+
+fn render_analysis_artifacts_dir(config: &Config, repo_name: &str, issue_number: u64) -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let issue_number_str = issue_number.to_string();
+    let branch = render_template(
+        &config.launch_agent.analysis_branch_template,
+        &[
+            ("HOME", home.as_str()),
+            ("REPO", repo_name),
+            ("ISSUE_NUMBER", issue_number_str.as_str()),
+        ],
+    );
+
+    render_template(
+        &config.launch_agent.analysis_artifacts_dir_template,
+        &[
+            ("HOME", home.as_str()),
+            ("REPO", repo_name),
+            ("ISSUE_NUMBER", issue_number_str.as_str()),
+            ("BRANCH", branch.as_str()),
+        ],
+    )
+}
+
+fn ensure_markdown_metadata_value(content: &str, key: &str, expected: &str) -> Result<()> {
+    let value = markdown_metadata_value(content, key)
+        .ok_or_else(|| anyhow!("analysis artifact metadata '{}' is missing", key))?;
+    anyhow::ensure!(
+        value == expected,
+        "analysis artifact metadata '{}' must be '{}', got '{}'",
+        key,
+        expected,
+        value
+    );
+    Ok(())
+}
+
+fn ensure_markdown_metadata_present(content: &str, key: &str) -> Result<()> {
+    markdown_metadata_value(content, key)
+        .ok_or_else(|| anyhow!("analysis artifact metadata '{}' is missing", key))?;
+    Ok(())
+}
+
+fn markdown_metadata_value<'a>(content: &'a str, key: &str) -> Option<&'a str> {
+    let prefix = format!("{key}:");
+    content
+        .lines()
+        .find_map(|line| line.strip_prefix(&prefix).map(str::trim))
+        .filter(|value| !value.is_empty())
 }
 
 fn prepare_session_manifest(
@@ -719,9 +812,20 @@ fn shell_quote(value: &str) -> String {
 
 #[cfg(test)]
 mod launch_agent_tests {
-    use super::LaunchAgentContext;
+    use super::{
+        ExecutionContext, LaunchAgentContext, validate_stage_preconditions,
+    };
+    use crate::config::{
+        Config, FlowStatuses, GithubConfig, ImplementationFlowStatuses,
+        IssueAnalysisFlowConfig, IssueImplementationFlowConfig, LaunchAgentConfig, RuntimeConfig,
+        ZellijConfig,
+    };
+    use crate::repo::RepoContext;
     use crate::domain::FlowStage;
+    use crate::runtime::RuntimeLayout;
     use crate::templates::render_template;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
 
     #[test]
     fn renders_launch_agent_templates() {
@@ -754,5 +858,102 @@ mod launch_agent_tests {
             "/home/danil/worktrees/teamlead/analysis/issue-42"
         );
         assert_eq!(context.artifacts_dir, "specs/issues/42");
+    }
+
+    #[test]
+    fn implementation_preconditions_accept_approved_analysis_artifacts() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        std::fs::create_dir_all(repo_root.join(".git")).expect("git dir");
+        std::fs::create_dir_all(repo_root.join("specs/issues/42")).expect("artifacts dir");
+        std::fs::write(
+            repo_root.join("specs/issues/42/README.md"),
+            "# Issue 42\n\nСтатус согласования: approved\nApproved By: dapi\nApproved At: 2026-03-14T19:14:28+03:00\n",
+        )
+        .expect("write README");
+
+        let context = test_execution_context(repo_root);
+        validate_stage_preconditions(&context, 42, FlowStage::Implementation)
+            .expect("implementation preconditions");
+    }
+
+    #[test]
+    fn implementation_preconditions_reject_missing_approval_metadata() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        std::fs::create_dir_all(repo_root.join(".git")).expect("git dir");
+        std::fs::create_dir_all(repo_root.join("specs/issues/42")).expect("artifacts dir");
+        std::fs::write(
+            repo_root.join("specs/issues/42/README.md"),
+            "# Issue 42\n\nСтатус согласования: pending human review\n",
+        )
+        .expect("write README");
+
+        let context = test_execution_context(repo_root);
+        let error = validate_stage_preconditions(&context, 42, FlowStage::Implementation)
+            .expect_err("preconditions must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("metadata 'Статус согласования' must be 'approved'"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    fn test_execution_context(repo_root: PathBuf) -> ExecutionContext {
+        let runtime = RuntimeLayout::from_repo_root(&repo_root);
+        runtime.ensure_exists().expect("runtime layout");
+
+        ExecutionContext {
+            repo: RepoContext {
+                repo_root: repo_root.clone(),
+                git_dir: repo_root.join(".git"),
+                github_owner: "dapi".into(),
+                github_repo: "example".into(),
+            },
+            config: Config {
+                github: GithubConfig {
+                    project_id: "PVT_test_project".into(),
+                },
+                issue_analysis_flow: IssueAnalysisFlowConfig {
+                    statuses: FlowStatuses {
+                        backlog: "Backlog".into(),
+                        analysis_in_progress: "Analysis In Progress".into(),
+                        waiting_for_clarification: "Waiting for Clarification".into(),
+                        waiting_for_plan_review: "Waiting for Plan Review".into(),
+                        ready_for_implementation: "Ready for Implementation".into(),
+                        analysis_blocked: "Analysis Blocked".into(),
+                    },
+                },
+                issue_implementation_flow: IssueImplementationFlowConfig {
+                    statuses: ImplementationFlowStatuses {
+                        ready_for_implementation: "Ready for Implementation".into(),
+                        implementation_in_progress: "Implementation In Progress".into(),
+                        waiting_for_ci: "Waiting for CI".into(),
+                        waiting_for_code_review: "Waiting for Code Review".into(),
+                        implementation_blocked: "Implementation Blocked".into(),
+                    },
+                },
+                runtime: RuntimeConfig {
+                    max_parallel: 1,
+                    poll_interval_seconds: 60,
+                },
+                zellij: ZellijConfig {
+                    session_name: "example".into(),
+                    tab_name: "issue-analysis".into(),
+                    layout: None,
+                },
+                launch_agent: LaunchAgentConfig {
+                    analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}".into(),
+                    worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}".into(),
+                    analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}".into(),
+                    implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}".into(),
+                    implementation_worktree_root_template:
+                        "${HOME}/worktrees/${REPO}/${BRANCH}".into(),
+                    implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}".into(),
+                },
+            },
+            runtime,
+        }
     }
 }

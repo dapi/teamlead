@@ -94,32 +94,39 @@
 
 Он создает стартовый шаблон `settings.yml`, в котором:
 
-- присутствуют обязательные поля MVP
-- `github.project_id` заполняется placeholder-значением, требующим ручной
-  донастройки
-- `zellij.session_name` bootstrap-ится как template `${REPO}`
-- `zellij.tab_name` по умолчанию равно `issue-analysis`
-- `zellij.layout` bootstrap-ится как `compact`, чтобы новая session по
-  умолчанию поднималась в привычном built-in layout без bare technical tab
+- `github.project_id` показывается как закомментированный placeholder,
+  требующий ручной донастройки;
+- все поля с canonical runtime default показываются как закомментированные
+  documented defaults, а не как обязательный активный YAML;
+- `zellij.session_name` документируется как template `${REPO}`;
+- `zellij.tab_name` документируется со значением `issue-analysis`;
+- `zellij.layout` документируется со значением `compact`, чтобы freshly
+  initialized repo сохранял текущий bootstrap UX и без раскомментирования файла;
 - `./.ai-teamlead/zellij/analysis-tab.kdl` bootstrap-ится как versioned template
   для analysis tab с placeholders `${TAB_NAME}` и `${PANE_ENTRYPOINT}` и
   встроенным `compact-bar` как bootstrap default для tab-level UX
-- `launch_agent.analysis_branch_template` по умолчанию равно
-  `analysis/issue-${ISSUE_NUMBER}`
-- `launch_agent.worktree_root_template` по умолчанию равно
-  `${HOME}/worktrees/${REPO}/${BRANCH}`
-- `launch_agent.analysis_artifacts_dir_template` по умолчанию равно
-  `specs/issues/${ISSUE_NUMBER}`
+- `launch_agent.analysis_branch_template` документируется как
+  `analysis/issue-${ISSUE_NUMBER}`;
+- `launch_agent.worktree_root_template` документируется как
+  `${HOME}/worktrees/${REPO}/${BRANCH}`;
+- `launch_agent.analysis_artifacts_dir_template` документируется как
+  `specs/issues/${ISSUE_NUMBER}`.
+
+Runtime loading при этом строится как `defaults + active YAML overrides`:
+
+- `github.project_id` остается `required-without-default`;
+- отсутствующие defaulted-поля подставляются из canonical Rust default-layer;
+- comment-only `settings.yml` допустим как bootstrap состояние, но `poll`/`run`
+  все равно требуют, чтобы оператор задал `github.project_id`.
 
 Операторские действия после `init`:
 
-1. вручную заменить `github.project_id` placeholder на реальный GitHub Project
-   id
-2. при необходимости скорректировать literal или template
+1. раскомментировать и заменить `github.project_id` placeholder на реальный
+   GitHub Project id
+2. при необходимости раскомментировать и скорректировать literal или template
    `zellij.session_name`
-3. при необходимости скорректировать `zellij.layout` и
-   `./.ai-teamlead/zellij/analysis-tab.kdl` под собственный tab-level UX
-4. при необходимости скорректировать `launch_agent.*` templates
+3. при необходимости раскомментировать и скорректировать `zellij.layout`,
+   `./.ai-teamlead/zellij/analysis-tab.kdl` и `launch_agent.*`
 5. только после этого запускать `poll` или `run`
 
 Если placeholder не заменен или id невалиден, текущая реализация не проходит

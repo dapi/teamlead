@@ -1,13 +1,13 @@
 # Issue 5: `issue-implementation-flow` как отдельный stage после analysis
 
-Статус: draft, analysis ready for human review
+Статус: approved
 Тип задачи: `feature`
 Тип проекта: `infra/platform`
 Размер: `medium`
 Последнее обновление: 2026-03-14
-Статус согласования: pending human review
-Approved By: -
-Approved At: -
+Статус согласования: approved
+Approved By: dapi
+Approved At: 2026-03-14T19:14:28+03:00
 
 ## Контекст
 

@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
@@ -19,11 +21,10 @@ pub fn run() -> Result<()> {
     let shell = SystemShell;
 
     match cli.command {
-        Some(Command::Daemon) | None => run_daemon(&shell),
-        Some(Command::Init) => run_init(&shell),
-        Some(Command::Poll) => run_poll(&shell),
-        Some(Command::Run { issue }) => run_manual_run(&shell, &issue),
-        Some(Command::Internal { internal }) => run_internal(&shell, internal),
+        Command::Init => run_init(&shell),
+        Command::Poll => run_poll(&shell),
+        Command::Run { issue, debug } => run_manual_run(&shell, &issue, debug),
+        Command::Internal { internal } => run_internal(&shell, internal),
     }
 }
 
@@ -46,23 +47,6 @@ fn run_init(shell: &dyn Shell) -> Result<()> {
         println!("skipped: {}", path.display());
     }
 
-    Ok(())
-}
-
-fn run_daemon(shell: &dyn Shell) -> Result<()> {
-    let context = load_execution_context(shell)?;
-    println!(
-        "daemon ready: repo={}/{} root={} project_id={}",
-        context.repo.github_owner,
-        context.repo.github_repo,
-        context.repo.repo_root.display(),
-        context.config.github.project_id
-    );
-    println!(
-        "runtime: poll_interval_seconds={} max_parallel={}",
-        context.config.runtime.poll_interval_seconds, context.config.runtime.max_parallel
-    );
-    println!("runtime root: {}", context.runtime.root.display());
     Ok(())
 }
 
@@ -117,6 +101,7 @@ fn run_poll(shell: &dyn Shell) -> Result<()> {
         &issue_url,
         &manifest.session_uuid,
         &binary_path,
+        false,
     ) {
         if let Ok(blocked_option_id) = snapshot
             .option_id_by_name(&context.config.issue_analysis_flow.statuses.analysis_blocked)
@@ -146,10 +131,11 @@ fn run_poll(shell: &dyn Shell) -> Result<()> {
             .analysis_in_progress,
         manifest.session_uuid
     );
+    print_zellij_launch_target(&context.runtime, &manifest.session_uuid, &context.config.zellij);
     Ok(())
 }
 
-fn run_manual_run(shell: &dyn Shell, issue_ref: &str) -> Result<()> {
+fn run_manual_run(shell: &dyn Shell, issue_ref: &str, debug: bool) -> Result<()> {
     let context = load_execution_context(shell)?;
     let github = GhProjectClient::new(shell);
     let zellij = ZellijLauncher::new(shell);
@@ -245,13 +231,66 @@ fn run_manual_run(shell: &dyn Shell, issue_ref: &str) -> Result<()> {
         &issue_url,
         &manifest.session_uuid,
         &binary_path,
+        debug,
     )?;
 
     println!(
         "run: issue=#{issue_number} relaunched in zellij session_uuid={}",
         manifest.session_uuid
     );
+    print_zellij_launch_target(&context.runtime, &manifest.session_uuid, &context.config.zellij);
     Ok(())
+}
+
+fn print_zellij_launch_target(
+    runtime: &RuntimeLayout,
+    session_uuid: &str,
+    zellij: &crate::config::ZellijConfig,
+) {
+    let launch_log_path = runtime.session_dir(session_uuid).join("launch.log");
+    let manifest = wait_for_zellij_binding(runtime, session_uuid, Duration::from_secs(5));
+    let session_id = manifest
+        .as_ref()
+        .map(|session| session.zellij.session_id.as_str())
+        .unwrap_or(zellij.session_name.as_str());
+    let tab_id = manifest
+        .as_ref()
+        .map(|session| session.zellij.tab_id.as_str())
+        .unwrap_or("pending");
+    let pane_id = manifest
+        .as_ref()
+        .map(|session| session.zellij.pane_id.as_str())
+        .unwrap_or("pending");
+
+    println!(
+        "launch target: zellij_session={} tab={} tab_id={} pane_id={} log={}",
+        session_id,
+        zellij.tab_name,
+        tab_id,
+        pane_id,
+        launch_log_path.display()
+    );
+}
+
+fn wait_for_zellij_binding(
+    runtime: &RuntimeLayout,
+    session_uuid: &str,
+    timeout: Duration,
+) -> Option<crate::runtime::SessionManifest> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(manifest) = runtime.load_session_manifest(session_uuid).ok().flatten() {
+            if manifest.zellij.tab_id != "pending" && manifest.zellij.pane_id != "pending" {
+                return Some(manifest);
+            }
+            if Instant::now() >= deadline {
+                return Some(manifest);
+            }
+        } else if Instant::now() >= deadline {
+            return None;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
 }
 
 fn run_internal(shell: &dyn Shell, internal: InternalCommand) -> Result<()> {
@@ -305,6 +344,7 @@ fn run_internal_launch_zellij_fixture(shell: &dyn Shell, issue_number: u64) -> R
         &issue_url,
         &manifest.session_uuid,
         &binary_path,
+        false,
     )?;
     println!(
         "fixture launch requested: issue=#{issue_number} session_uuid={}",

@@ -7,19 +7,48 @@ FLOW_PATH="./.ai-teamlead/flows/issue-analysis-flow.md"
 REPO_ROOT="$(pwd -P)"
 
 AI_TEAMLEAD_BIN="${AI_TEAMLEAD_BIN:-ai-teamlead}"
+AI_TEAMLEAD_DEBUG="${AI_TEAMLEAD_DEBUG:-0}"
+AI_TEAMLEAD_LAUNCH_LOG="${AI_TEAMLEAD_LAUNCH_LOG:-}"
+
+enable_debug_trace() {
+    if [[ "$AI_TEAMLEAD_DEBUG" != "1" || -z "$AI_TEAMLEAD_LAUNCH_LOG" ]]; then
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$AI_TEAMLEAD_LAUNCH_LOG")"
+    exec 9>>"$AI_TEAMLEAD_LAUNCH_LOG"
+    export BASH_XTRACEFD=9
+    export PS4='+ launch-agent:${LINENO}: '
+    set -x
+}
+
+append_launch_log() {
+    if [[ -z "$AI_TEAMLEAD_LAUNCH_LOG" ]]; then
+        return 0
+    fi
+
+    printf '[%s] launch-agent: %s\n' "$(date -Iseconds)" "$*" >>"$AI_TEAMLEAD_LAUNCH_LOG"
+}
+
+enable_debug_trace
+append_launch_log "bootstrap session_uuid=$SESSION_UUID issue_url=$ISSUE_URL"
 
 if ! command -v "$AI_TEAMLEAD_BIN" >/dev/null 2>&1; then
+    append_launch_log "ai-teamlead binary is not available: $AI_TEAMLEAD_BIN"
     printf 'launch-agent.sh: ai-teamlead binary is not available: %s\n' "$AI_TEAMLEAD_BIN" >&2
     exit 1
 fi
 
+append_launch_log "binding zellij pane"
 "$AI_TEAMLEAD_BIN" internal bind-zellij-pane "$SESSION_UUID"
 
 if [[ ! -f "$FLOW_PATH" ]]; then
+    append_launch_log "missing flow file $FLOW_PATH"
     printf 'launch-agent.sh: missing flow file %s\n' "$FLOW_PATH" >&2
     exit 1
 fi
 
+append_launch_log "rendering launch-agent context for $ISSUE_URL"
 eval "$("$AI_TEAMLEAD_BIN" internal render-launch-agent-context "$ISSUE_URL")"
 
 detect_default_branch() {
@@ -129,8 +158,10 @@ Analysis artifacts dir: $ANALYSIS_ARTIFACTS_DIR"
 
 ensure_analysis_worktree
 cd "$WORKTREE_ROOT"
+append_launch_log "worktree ready at $WORKTREE_ROOT"
 run_project_init
 mkdir -p "$ANALYSIS_ARTIFACTS_DIR"
+append_launch_log "artifacts dir ready at $ANALYSIS_ARTIFACTS_DIR"
 
 export AI_TEAMLEAD_SESSION_UUID="$SESSION_UUID"
 export AI_TEAMLEAD_ISSUE_URL="$ISSUE_URL"
@@ -139,4 +170,5 @@ export AI_TEAMLEAD_WORKTREE_ROOT="$WORKTREE_ROOT"
 export AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR="$ANALYSIS_ARTIFACTS_DIR"
 export AI_TEAMLEAD_REPO_ROOT="$REPO_ROOT"
 
+append_launch_log "starting agent in $WORKTREE_ROOT"
 start_agent

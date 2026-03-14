@@ -8,15 +8,15 @@
 
 Решение считается корректным, если:
 
-- daemon читает `./.ai-teamlead/settings.yml` из репозитория
-- daemon корректно определяет repo context
-- daemon выбирает только issues со статусом `Backlog`
-- при наличии нескольких backlog issues daemon выбирает верхнюю issue в порядке
+- `ai-teamlead` читает `./.ai-teamlead/settings.yml` из репозитория
+- `ai-teamlead` корректно определяет repo context
+- `ai-teamlead` выбирает только issues со статусом `Backlog`
+- при наличии нескольких backlog issues `ai-teamlead` выбирает верхнюю issue в порядке
   GitHub Project
 - перед запуском flow issue переводится в `Analysis In Progress`
 - при ошибке смены статуса flow не стартует
-- daemon не использует локальную базу как источник истины по состоянию issue
-- daemon создает durable-связку между issue и `session_uuid`
+- `ai-teamlead` не использует локальную базу как источник истины по состоянию issue
+- `ai-teamlead` создает durable-связку между issue и `session_uuid`
 - launcher записывает `zellij.session_id`, `zellij.tab_id`, `zellij.pane_id`
 - `run` запускает нового агента в новой `zellij` pane
 - в агентский запуск передается URL GitHub issue
@@ -25,16 +25,16 @@
 
 Feature считается готовой к первому использованию, если:
 
-- daemon можно запустить в foreground в одном репозитории
+- `ai-teamlead` можно запустить в foreground в одном репозитории
 - команды `poll` и `run` работают по документированным правилам
-- daemon способен запустить `issue-analysis-flow` в `zellij`
+- `ai-teamlead` способен запустить `issue-analysis-flow` в `zellij`
 - один репозиторий можно обслуживать без ручного редактирования кода
 - второй репозиторий можно подключить заменой только repo-local конфига
 - обязательные unit, integration и smoke tests для MVP пройдены
 
 ## Инварианты
 
-- один экземпляр daemon обслуживает один репозиторий
+- один экземпляр `ai-teamlead` обслуживает один репозиторий
 - source of truth по статусу issue находится в GitHub Project
 - `./.ai-teamlead/settings.yml` живет в репозитории
 - при `max_parallel: 1` одновременно не должно запускаться больше одной issue
@@ -45,20 +45,20 @@ Feature считается готовой к первому использова
 ### Сценарий 1. Базовый polling
 
 - в Project есть одна `open` issue со статусом `Backlog`
-- daemon выполняет polling
+- `ai-teamlead` выполняет polling
 - issue переводится в `Analysis In Progress`
 - flow запускается в новой pane внутри настроенной `zellij` session/tab
 
 ### Сценарий 2. Нет подходящих issues
 
 - в Project нет issues со статусом `Backlog`
-- daemon выполняет polling
+- `ai-teamlead` выполняет polling
 - никаких запусков flow не происходит
-- daemon остается в рабочем цикле без ошибок
+- `ai-teamlead` остается в рабочем цикле без ошибок
 
 ### Сценарий 3. Ошибка смены статуса
 
-- daemon находит подходящую issue
+- `ai-teamlead` находит подходящую issue
 - изменение статуса в GitHub завершается ошибкой
 - flow не запускается
 - ошибка фиксируется в диагностике
@@ -75,7 +75,7 @@ Feature считается готовой к первому использова
 
 - существуют два разных репозитория с собственными
   `./.ai-teamlead/settings.yml`
-- в каждом запущен свой daemon
+- в каждом запущен свой `ai-teamlead`
 - оба процесса работают независимо и не мешают друг другу
 
 ### Сценарий 6. Ручной `poll`
@@ -88,7 +88,7 @@ Feature считается готовой к первому использова
 ### Сценарий 6a. Несколько backlog issues
 
 - в `Backlog` есть несколько подходящих issues
-- daemon или `poll` выбирает верхнюю issue в порядке GitHub Project
+- `ai-teamlead` или `poll` выбирает верхнюю issue в порядке GitHub Project
 
 ### Сценарий 7. Некорректный `run`
 
@@ -100,7 +100,7 @@ Feature считается готовой к первому использова
 
 Минимально необходимо видеть:
 
-- что daemon стартовал
+- что `ai-teamlead` стартовал
 - какой репозиторий и какой `project_id` он обслуживает
 - когда начинается polling cycle
 - какая issue выбрана

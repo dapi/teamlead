@@ -1,3 +1,4 @@
+use std::fs::OpenOptions;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -18,6 +19,7 @@ pub trait Shell {
         envs: &[(&str, &str)],
         program: &str,
         args: &[&str],
+        stdout_stderr_log_path: Option<&Path>,
     ) -> Result<()>;
 }
 
@@ -65,14 +67,30 @@ impl Shell for SystemShell {
         envs: &[(&str, &str)],
         program: &str,
         args: &[&str],
+        stdout_stderr_log_path: Option<&Path>,
     ) -> Result<()> {
-        Command::new(program)
+        let mut command = Command::new(program);
+        command
             .args(args)
             .envs(envs.iter().copied())
             .current_dir(cwd)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdin(Stdio::null());
+
+        if let Some(path) = stdout_stderr_log_path {
+            let stdout = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .with_context(|| format!("failed to open spawn log: {}", path.display()))?;
+            let stderr = stdout
+                .try_clone()
+                .with_context(|| format!("failed to clone spawn log handle: {}", path.display()))?;
+            command.stdout(Stdio::from(stdout)).stderr(Stdio::from(stderr));
+        } else {
+            command.stdout(Stdio::null()).stderr(Stdio::null());
+        }
+
+        command
             .spawn()
             .with_context(|| format!("failed to spawn {program}"))?;
         Ok(())

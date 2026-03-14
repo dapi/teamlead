@@ -25,6 +25,7 @@ impl<'a> ZellijLauncher<'a> {
         issue_url: &str,
         session_uuid: &str,
         binary_path: &Path,
+        debug: bool,
     ) -> Result<()> {
         let session_dir = runtime.session_dir(session_uuid);
         fs::create_dir_all(&session_dir)
@@ -32,17 +33,29 @@ impl<'a> ZellijLauncher<'a> {
 
         let entrypoint_path = session_dir.join("pane-entrypoint.sh");
         let layout_path = session_dir.join("launch-layout.kdl");
+        let launch_log_path = session_dir.join("launch.log");
+        fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&launch_log_path)
+            .with_context(|| format!("failed to create {}", launch_log_path.display()))?;
         let quoted_repo_root = shell_single_quote(repo_root.to_string_lossy().as_ref());
         let quoted_launch_agent = shell_single_quote("./.ai-teamlead/launch-agent.sh");
         let quoted_session_uuid = shell_single_quote(session_uuid);
         let quoted_issue_url = shell_single_quote(issue_url);
         let quoted_binary = shell_single_quote(binary_path.to_string_lossy().as_ref());
+        let quoted_launch_log = shell_single_quote(launch_log_path.to_string_lossy().as_ref());
+        let debug_flag = if debug { "1" } else { "0" };
 
         let entrypoint = format!(
             "#!/usr/bin/env bash\n\
 set -euo pipefail\n\
 cd {quoted_repo_root}\n\
 export AI_TEAMLEAD_BIN={quoted_binary}\n\
+export AI_TEAMLEAD_DEBUG={debug_flag}\n\
+export AI_TEAMLEAD_LAUNCH_LOG={quoted_launch_log}\n\
+mkdir -p \"$(dirname \"$AI_TEAMLEAD_LAUNCH_LOG\")\"\n\
+printf '[%s] pane-entrypoint: session_uuid=%s issue_url=%s debug=%s\\n' \"$(date -Iseconds)\" {quoted_session_uuid} {quoted_issue_url} \"$AI_TEAMLEAD_DEBUG\" >>\"$AI_TEAMLEAD_LAUNCH_LOG\"\n\
 exec {quoted_launch_agent} {quoted_session_uuid} {quoted_issue_url}\n"
         );
         fs::write(&entrypoint_path, entrypoint)
@@ -97,6 +110,7 @@ exec {quoted_launch_agent} {quoted_session_uuid} {quoted_issue_url}\n"
             &[],
             "script",
             &["-qfc", &zellij_command, "/dev/null"],
+            Some(&launch_log_path),
         )
     }
 }
@@ -269,6 +283,7 @@ mod tests {
             _envs: &[(&str, &str)],
             program: &str,
             args: &[&str],
+            _stdout_stderr_log_path: Option<&Path>,
         ) -> Result<()> {
             self.spawns
                 .borrow_mut()
@@ -320,6 +335,7 @@ mod tests {
                 "https://github.com/dapi/teamlead/issues/42",
                 "session-uuid",
                 Path::new("/tmp/ai-teamlead"),
+                false,
             )
             .expect("launch should succeed");
 
@@ -337,6 +353,12 @@ mod tests {
             runtime
                 .session_dir("session-uuid")
                 .join("pane-entrypoint.sh")
+                .exists()
+        );
+        assert!(
+            runtime
+                .session_dir("session-uuid")
+                .join("launch.log")
                 .exists()
         );
     }

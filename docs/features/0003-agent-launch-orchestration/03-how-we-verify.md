@@ -21,7 +21,7 @@
 Feature считается готовой, если:
 
 - operator может запустить issue через `run`
-- daemon может запустить issue через `poll`
+- `poll` может найти и запустить issue
 - оба сценария приводят к одинаковому agent launcher behavior
 - corner cases по session/tab покрыты тестами или зафиксированными smoke
   сценариями

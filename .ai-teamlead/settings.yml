@@ -15,7 +15,7 @@ runtime:
   poll_interval_seconds: 3600
 
 zellij:
-  session_name: "teamlead-ai-teamlead"
+  session_name: "ai-teamlead"
   tab_name: "issue-analysis"
 
 launch_agent:

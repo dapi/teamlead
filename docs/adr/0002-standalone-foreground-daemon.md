@@ -1,4 +1,4 @@
-# ADR-0002: Standalone foreground daemon для MVP
+# ADR-0002: Foreground CLI-утилита для MVP
 
 Статус: accepted
 Дата: 2026-03-13
@@ -13,22 +13,21 @@
 
 - один процесс
 - foreground execution
-- собственный polling loop
+- one-shot команда `poll`
 - минимальная оркестрационная сложность
 
 ## Решение
 
-На первом этапе `ai-teamlead` реализуется как standalone daemon, который
-работает в foreground и сам выполняет polling loop.
+`ai-teamlead` реализуется как foreground CLI-утилита с командами `init`, `poll`
+и `run`. Команда `poll` выполняет один цикл поиска и запуска issue.
 
-`systemd --user timer` не используется как базовая модель запуска первого MVP и
-рассматривается как возможный следующий этап интеграции.
+`systemd --user timer` не используется как базовая модель запуска первого MVP.
 
 MVP runtime-модель:
 
-- single-process loop
+- one-shot `poll`
 - `max_parallel: 1`
-- один экземпляр daemon на один репозиторий
+- один экземпляр на один репозиторий
 
 ## Последствия
 
@@ -41,8 +40,6 @@ MVP runtime-модель:
 
 Минусы:
 
-- нужен собственный polling loop
-- часть функций supervisor/process manager пока не делегируется systemd
 - при дальнейшем росте возможностей может понадобиться дополнительный режим
   запуска
 

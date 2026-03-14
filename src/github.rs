@@ -313,6 +313,7 @@ mod tests {
             _envs: &[(&str, &str)],
             program: &str,
             args: &[&str],
+            _stdout_stderr_log_path: Option<&Path>,
         ) -> Result<()> {
             self.run(cwd, program, args).map(|_| ())
         }

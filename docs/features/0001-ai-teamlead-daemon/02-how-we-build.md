@@ -2,7 +2,7 @@
 
 ## Архитектура
 
-Первая версия строится как один foreground daemon на один репозиторий.
+Первая версия строится как CLI-утилита, работающая в контексте одного репозитория.
 
 Состав решения:
 
@@ -24,13 +24,13 @@
 
 Ключевые состояния:
 
-- daemon запущен
-- daemon ждет следующего polling cycle
-- daemon нашел подходящую issue
+- `poll` запущен
+- `poll` не нашел подходящей issue, завершился
+- `poll` нашел подходящую issue
 - issue переведена в `Analysis In Progress`
 - issue связана с `session_uuid`
 - flow запущен
-- daemon вернулся в цикл ожидания
+- `poll` завершился
 
 Состояния issue определяются не локально, а через GitHub Project statuses.
 
@@ -56,7 +56,7 @@
 
 - repo-local конфиг `./.ai-teamlead/settings.yml`
 - versioned project-local flow в `./.ai-teamlead/flows/issue-analysis-flow.md`
-- standalone daemon в foreground
+- foreground CLI-утилита с командами `init`, `poll`, `run`
 - single-process loop
 - язык реализации MVP: Rust
 - GitHub Project status как источник истины
@@ -71,8 +71,8 @@
 
 Дополнительные правила реализации:
 
-- daemon должен работать только в контексте одного репозитория
-- несколько репозиториев могут иметь независимые daemon-инстансы
+- `ai-teamlead` должен работать только в контексте одного репозитория
+- несколько репозиториев могут использоваться независимо
 - смена статуса в GitHub должна происходить до старта анализа
 - локальный state не должен подменять GitHub как источник истины
 
@@ -123,7 +123,7 @@ zellij:
 
 ## Runtime layout
 
-Repo-local runtime-артефакты daemon хранятся в:
+Repo-local runtime-артефакты хранятся в:
 
 ```text
 .git/.ai-teamlead/

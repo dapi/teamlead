@@ -26,7 +26,7 @@
 
 ## Результат
 
-Полезным результатом первой версии считается daemon, который:
+Полезным результатом первой версии считается CLI-утилита, которая:
 
 - запускается в foreground
 - работает в контексте одного репозитория
@@ -39,7 +39,7 @@
 
 В первую версию входит:
 
-- standalone daemon
+- CLI-утилита с командами `init`, `poll`, `run`
 - repo-local конфиг `./.ai-teamlead/settings.yml`
 - использование versioned project-local contract из `./.ai-teamlead/`
 - polling loop
@@ -50,7 +50,7 @@
 ## Вне scope
 
 - автоматическая реализация issue
-- создание ветки, worktree, коммитов и PR самим daemon (эта ответственность
+- создание ветки, worktree, коммитов и PR самим `ai-teamlead` (эта ответственность
   делегирована project-local `launch-agent.sh`, см.
   [Feature 0003](../0003-agent-launch-orchestration/README.md))
 - web UI

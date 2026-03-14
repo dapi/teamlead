@@ -19,10 +19,10 @@ install_agent_stubs "$STUB_BIN" "$STUB_OUT"
 export PATH="$STUB_BIN:$PATH"
 export AI_TEAMLEAD_STUB_AGENT_SLEEP=8
 
-(
+RUN_OUTPUT="$(
     cd "$REPO_ROOT"
-    "$AI_TEAMLEAD_BIN" run 42
-)
+    "$AI_TEAMLEAD_BIN" run -d 42 2>&1
+)"
 
 ISSUE_INDEX="$REPO_ROOT/.git/.ai-teamlead/issues/42.json"
 if ! wait_for_file "$ISSUE_INDEX"; then
@@ -33,6 +33,7 @@ fi
 
 SESSION_UUID="$(jq -r '.session_uuid' "$ISSUE_INDEX")"
 SESSION_MANIFEST="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/session.json"
+LAUNCH_LOG="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/launch.log"
 if ! wait_for_file "$SESSION_MANIFEST"; then
     echo "  FAIL: run created session manifest"
     ((FAIL++)) || true
@@ -45,9 +46,11 @@ PANE_ID="$(wait_for_json_field_not_value "$SESSION_MANIFEST" '.zellij.pane_id' '
 wait_for_dir "$WORKTREE_ROOT" 30 || true
 wait_for_dir "$ARTIFACTS_DIR" 30 || true
 wait_for_file "$STUB_OUT/codex.invoked" 30 || true
+wait_for_file "$LAUNCH_LOG" 30 || true
 
 assert_file_exists "$ISSUE_INDEX" "run created issue index"
 assert_file_exists "$SESSION_MANIFEST" "run created session manifest"
+assert_file_exists "$LAUNCH_LOG" "run created launch log"
 assert_dir_exists "$WORKTREE_ROOT" "run created analysis worktree"
 assert_dir_exists "$ARTIFACTS_DIR" "run created analysis artifacts directory"
 assert_file_exists "$STUB_OUT/codex.invoked" "run started stub agent inside zellij pane"
@@ -58,6 +61,10 @@ assert_eq "$(cat "$STUB_OUT/worktree_root")" "$WORKTREE_ROOT" "run passed worktr
 assert_eq "$(cat "$STUB_OUT/analysis_artifacts_dir")" "specs/issues/42" "run passed artifacts dir to stub agent"
 assert_eq "$(cat "$STUB_OUT/codex.cwd")" "$WORKTREE_ROOT" "stub agent started in analysis worktree"
 assert_ne "$PANE_ID" "" "run captured zellij pane id"
+assert_file_contains "$LAUNCH_LOG" "pane-entrypoint: session_uuid=$SESSION_UUID" "run wrote pane entrypoint bootstrap log"
+assert_file_contains "$LAUNCH_LOG" "launch-agent: starting agent in $WORKTREE_ROOT" "run wrote launch-agent progress log"
 assert_file_contains "$STUB_OUT/prompt.txt" "# issue-analysis-flow" "run injected issue-analysis flow into prompt"
 assert_file_contains "$STUB_OUT/prompt.txt" "Issue URL: https://github.com/dapi/example/issues/42" "run injected issue URL into prompt"
 assert_file_contains "$GH_LOG" "itemId=ITEM-42" "run updated project status for selected item"
+assert_text_contains "$RUN_OUTPUT" "launch target: zellij_session=" "run printed zellij launch target"
+assert_text_contains "$RUN_OUTPUT" "pane_id=" "run printed zellij pane id"

@@ -12,7 +12,7 @@
 
 ## Зависимости
 
-- Feature 0001 (daemon, poll, run) — orchestration использует launch path,
+- Feature 0001 (CLI, poll, run) — orchestration использует launch path,
   который вызывается из `poll` и `run`
 - Feature 0002 (repo-init) — `launch-agent.sh` и `settings.yml` создаются
   командой `init`

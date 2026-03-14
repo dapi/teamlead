@@ -52,24 +52,13 @@ MVP не делает:
 
 ## Модель запуска
 
-На первом этапе `ai-teamlead` реализуется как standalone daemon, который
-запускается в foreground и сам выполняет polling.
+`ai-teamlead` реализуется как CLI-утилита с тремя основными командами:
 
-Daemon:
-
-1. периодически находит подходящие `open` issues в GitHub Project
-2. забирает одну issue в работу
-3. запускает тот же agent-launch flow, что и команда `run`, в заданной
-   `zellij` session и tab
-
-Также должны существовать ручные команды:
-
-- `init`
-- `poll`
-- `run`
-
-`systemd --user timer` рассматривается как следующий этап интеграции и не
-является базовой моделью запуска для первого MVP.
+- `init` — подключение репозитория, создание project-local contract layer
+- `poll` — one-shot polling: находит подходящую issue в GitHub Project,
+  забирает её в работу и запускает agent-launch flow в заданной `zellij`
+  session и tab
+- `run` — запуск flow по явно указанной issue
 
 ## Источник истины
 

@@ -67,6 +67,18 @@ assert_file_contains() {
     fi
 }
 
+assert_text_contains() {
+    local text="$1" pattern="$2" msg="$3"
+    if grep -Fq "$pattern" <<<"$text"; then
+        echo "  PASS: $msg"
+        ((PASS++)) || true
+    else
+        echo "  FAIL: $msg"
+        echo "    missing pattern: $pattern"
+        ((FAIL++)) || true
+    fi
+}
+
 assert_session_alive() {
     local session_name="$1" msg="$2"
     if zellij list-sessions --short 2>/dev/null | grep -Fxq "$session_name"; then

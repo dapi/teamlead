@@ -3,6 +3,28 @@
 Этот проект это набор локальных CLI-first скриптов для персонального workflow
 вокруг AI-driven анализа GitHub issue.
 
+## Статус README
+
+Этот `README.md` является repo-level входной точкой и верхнеуровневым обзором
+проекта.
+
+Он является каноническим источником для:
+
+- назначения продукта
+- границ MVP
+- общей карты документации
+- краткой архитектурной рамки уровня всего репозитория
+
+Он не является каноническим источником для:
+
+- flow-контрактов и статусных переходов
+- детальной схемы конфигурации
+- subsystem-level runtime-контрактов
+- порядка реализации и verification-деталей
+
+Для этих слоев `README.md` дает только summary и ссылки на профильные
+канонические документы.
+
 ## Ключевое требование
 
 Проект должен быть спроектирован так, чтобы его можно было легко подключить к
@@ -36,11 +58,16 @@
 
 Базовые документы:
 
+- `README.md` как repo-level overview и входная точка
 - [docs/code-quality.md](./docs/code-quality.md)
 - [docs/documentation-structure.md](./docs/documentation-structure.md)
+- [docs/documentation-process.md](./docs/documentation-process.md)
 - [docs/implementation-plan.md](./docs/implementation-plan.md)
 - [docs/templates/feature-spec-template.md](./docs/templates/feature-spec-template.md)
 - [docs/issue-analysis-flow.md](./docs/issue-analysis-flow.md)
+- [docs/features/0001-ai-teamlead-daemon/README.md](./docs/features/0001-ai-teamlead-daemon/README.md)
+- [docs/features/0002-repo-init/README.md](./docs/features/0002-repo-init/README.md)
+- [docs/features/0003-agent-launch-orchestration/README.md](./docs/features/0003-agent-launch-orchestration/README.md)
 - [AURA.md](./AURA.md) как project-local доступ к
   личному высокоуровневому инженерному видению разработчика
 
@@ -75,6 +102,9 @@ MVP не делает:
 ## Источник истины
 
 Источник истины по состоянию задачи это поле статуса в default GitHub Project.
+
+Канонический flow-контракт, модель статусов и правила переходов зафиксированы в
+[docs/issue-analysis-flow.md](./docs/issue-analysis-flow.md).
 
 Постоянное локальное runtime state не используется как источник истины.
 Локально могут существовать только временные рабочие файлы.
@@ -113,6 +143,11 @@ Flow анализа и CLI-контракт вынесены в отдельны
 
 ## Статусы проекта
 
+Ниже приведен только summary для быстрого ориентирования.
+
+Канонический список статусов, их значения и допустимые переходы описаны в
+[docs/issue-analysis-flow.md](./docs/issue-analysis-flow.md).
+
 Для flow анализа используются следующие статусы в GitHub Project:
 
 - `Backlog`
@@ -128,6 +163,15 @@ Flow анализа и CLI-контракт вынесены в отдельны
 
 Конфиг хранится в YAML и должен лежать в каталоге `./.ai-teamlead/` целевого
 репозитория.
+
+Ниже приведен только repo-level overview.
+
+Канонический контракт по repo-local asset layer, `settings.yml` и launcher path
+раскрывается в связанных feature-документах и ADR:
+
+- [docs/features/0001-ai-teamlead-daemon/README.md](./docs/features/0001-ai-teamlead-daemon/README.md)
+- [docs/features/0002-repo-init/README.md](./docs/features/0002-repo-init/README.md)
+- [docs/features/0003-agent-launch-orchestration/README.md](./docs/features/0003-agent-launch-orchestration/README.md)
 
 Это означает:
 
@@ -202,7 +246,7 @@ canonical GitHub repo slug из `origin`.
 - `launch_agent.worktree_root_template`
 - `launch_agent.analysis_artifacts_dir_template`
 
-Что еще нужно кроме перечисленного тобой:
+Дополнительно имеет смысл зарезервировать место для:
 
 - `issue_analysis_flow.statuses.*`
   Лучше хранить не просто список статусов, а именованные переходные статусы по
@@ -252,7 +296,14 @@ launch_agent:
   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
 ```
 
-Bootstrap default для [./.ai-teamlead/launch-agent.sh](/home/danil/code/teamlead/.ai-teamlead/launch-agent.sh):
+Ниже показана ожидаемая shape project-local contract layer.
+
+Канонический контракт по составу и роли этих файлов раскрыт в
+[docs/features/0002-repo-init/README.md](./docs/features/0002-repo-init/README.md)
+и
+[docs/features/0003-agent-launch-orchestration/README.md](./docs/features/0003-agent-launch-orchestration/README.md).
+
+Bootstrap default для [./.ai-teamlead/launch-agent.sh](./.ai-teamlead/launch-agent.sh):
 
 - подготавливает analysis branch/worktree по templates из `settings.yml`
 - создает каталог versioned analysis-артефактов
@@ -274,9 +325,9 @@ Bootstrap default для [./.ai-teamlead/launch-agent.sh](/home/danil/code/teaml
 
 Project-local agent assets:
 
-- [./.claude/README.md](/home/danil/code/teamlead/.claude/README.md) для
+- [./.claude/README.md](./.claude/README.md) для
   Claude-specific материалов
-- [./.codex/README.md](/home/danil/code/teamlead/.codex/README.md) как project
+- [./.codex/README.md](./.codex/README.md) как project
   convention для Codex-specific материалов
 
 Инициализация этого слоя оформляется отдельной ручной командой:

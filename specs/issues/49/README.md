@@ -1,5 +1,14 @@
 # Issue 49: `zellij` issue-aware tab naming for `tab` launch target
 
+Статус: approved
+Тип задачи: `feature`
+Тип проекта: `infra/platform`
+Размер: `medium`
+Последнее обновление: 2026-03-14
+Статус согласования: approved
+Approved By: dapi
+Approved At: 2026-03-14T23:11:41+03:00
+
 ## Issue
 
 - GitHub issue: https://github.com/dapi/ai-teamlead/issues/49
@@ -22,8 +31,8 @@ Issue добавляет отдельный naming contract для ветки `z
 
 ## Status
 
-Черновик анализа готов к human review и переводу issue в
-`Waiting for Plan Review`.
+Пакет анализа утвержден и готов быть каноническим входом для implementation
+stage после перевода issue в `Ready for Implementation`.
 
 ## Artifacts
 

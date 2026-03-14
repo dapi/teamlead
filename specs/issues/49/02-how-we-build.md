@@ -1,5 +1,10 @@
 # Issue 49: Как строим
 
+Статус: approved
+Статус согласования: approved
+Approved By: dapi
+Approved At: 2026-03-14T23:11:41+03:00
+
 ## Approach
 
 Изменение делаем как локальное расширение существующего `zellij` config

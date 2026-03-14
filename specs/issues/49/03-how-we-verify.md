@@ -1,5 +1,10 @@
 # Issue 49: Как проверяем
 
+Статус: approved
+Статус согласования: approved
+Approved By: dapi
+Approved At: 2026-03-14T23:11:41+03:00
+
 ## Acceptance Criteria
 
 - в versioned config contract есть optional поле `zellij.tab_name_template`;

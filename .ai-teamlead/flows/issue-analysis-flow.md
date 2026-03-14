@@ -38,6 +38,7 @@
 
 - `./.ai-teamlead/settings.yml`
 - `./.ai-teamlead/README.md`
+- `./AURA.md`
 - staged prompts в `./.ai-teamlead/flows/issue-analysis/`
 - project-local agent assets, если они есть:
   - `./.claude/`

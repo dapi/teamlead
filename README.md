@@ -41,6 +41,8 @@
 - [docs/implementation-plan.md](/home/danil/code/teamlead/docs/implementation-plan.md)
 - [docs/templates/feature-spec-template.md](/home/danil/code/teamlead/docs/templates/feature-spec-template.md)
 - [docs/issue-analysis-flow.md](/home/danil/code/teamlead/docs/issue-analysis-flow.md)
+- [AURA.md](/home/danil/code/teamlead/AURA.md) как project-local доступ к
+  личному высокоуровневому инженерному видению разработчика
 
 ## MVP
 

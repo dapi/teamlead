@@ -134,6 +134,11 @@ wait_for_json_field_not_value() {
     return 1
 }
 
+issue_session_uuid() {
+    local issue_index="$1"
+    jq -r '.bindings.analysis // .bindings.implementation // .session_uuid // empty' "$issue_index"
+}
+
 create_test_repo() {
     local repo_root="$1"
     mkdir -p "$repo_root/.ai-teamlead"

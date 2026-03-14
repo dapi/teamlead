@@ -26,6 +26,7 @@ AI_TEAMLEAD_BIN="${AI_TEAMLEAD_BIN:-ai-teamlead}"
 PRIMARY_REPO_ROOT="$(pwd -P)"
 
 "$AI_TEAMLEAD_BIN" internal bind-zellij-pane "$SESSION_UUID"
+export AI_TEAMLEAD_FLOW_STAGE=analysis
 eval "$("$AI_TEAMLEAD_BIN" internal render-launch-agent-context "$ISSUE_URL")"
 
 mkdir -p "$(dirname "$WORKTREE_ROOT")"
@@ -37,13 +38,15 @@ fi
 
 cd "$WORKTREE_ROOT"
 ./init.sh
-mkdir -p "$ANALYSIS_ARTIFACTS_DIR"
+mkdir -p "$ARTIFACTS_DIR"
 
 export AI_TEAMLEAD_SESSION_UUID="$SESSION_UUID"
 export AI_TEAMLEAD_ISSUE_URL="$ISSUE_URL"
+export AI_TEAMLEAD_BRANCH="$BRANCH"
+export AI_TEAMLEAD_ARTIFACTS_DIR="$ARTIFACTS_DIR"
 export AI_TEAMLEAD_ANALYSIS_BRANCH="$BRANCH"
 export AI_TEAMLEAD_WORKTREE_ROOT="$WORKTREE_ROOT"
-export AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR="$ANALYSIS_ARTIFACTS_DIR"
+export AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR="$ARTIFACTS_DIR"
 export AI_TEAMLEAD_REPO_ROOT="$PRIMARY_REPO_ROOT"
 
 PROMPT="$(cat ./.ai-teamlead/flows/issue-analysis-flow.md)
@@ -51,7 +54,7 @@ PROMPT="$(cat ./.ai-teamlead/flows/issue-analysis-flow.md)
 Issue URL: $ISSUE_URL
 Session UUID: $SESSION_UUID
 Analysis branch: $BRANCH
-Analysis artifacts dir: $ANALYSIS_ARTIFACTS_DIR"
+Analysis artifacts dir: $ARTIFACTS_DIR"
 
 exec codex --cd "$WORKTREE_ROOT" --no-alt-screen "$PROMPT"
 EOF
@@ -77,7 +80,7 @@ if ! wait_for_file "$ISSUE_INDEX"; then
     return 0
 fi
 
-SESSION_UUID="$(jq -r '.session_uuid' "$ISSUE_INDEX")"
+SESSION_UUID="$(issue_session_uuid "$ISSUE_INDEX")"
 SESSION_MANIFEST="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/session.json"
 if ! wait_for_file "$SESSION_MANIFEST"; then
     echo "  FAIL: run created session manifest for complete-stage flow"
@@ -126,4 +129,4 @@ assert_file_contains "$GH_LOG" "gh pr list --head analysis/issue-43 --json numbe
 assert_file_contains "$GH_LOG" "gh pr create --draft --title analysis(#43): stub analysis ready" "complete-stage created draft PR"
 assert_file_contains "$GH_LOG" "itemId=ITEM-43" "complete-stage updated GitHub Project status"
 assert_file_contains "$STUB_OUT/complete-stage.stdout" "complete-stage: created draft PR: https://github.com/dapi/example/pull/99" "complete-stage reported created draft PR"
-assert_file_contains "$STUB_OUT/complete-stage.stdout" "complete-stage: issue=#43 outcome=plan-ready status=Waiting for Plan Review" "complete-stage reported final outcome"
+assert_file_contains "$STUB_OUT/complete-stage.stdout" "complete-stage: issue=#43 stage=analysis outcome=plan-ready status=Waiting for Plan Review" "complete-stage reported final outcome"

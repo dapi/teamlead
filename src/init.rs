@@ -10,6 +10,8 @@ const SETTINGS_TEMPLATE: &str = include_str!("../templates/init/settings.yml");
 const PROJECT_INIT_TEMPLATE: &str = include_str!("../templates/init/init.sh");
 const LAUNCH_AGENT_TEMPLATE: &str = include_str!("../templates/init/launch-agent.sh");
 const ISSUE_ANALYSIS_FLOW_TEMPLATE: &str = include_str!("../templates/init/issue-analysis-flow.md");
+const ISSUE_IMPLEMENTATION_FLOW_TEMPLATE: &str =
+    include_str!("../templates/init/issue-implementation-flow.md");
 const ANALYSIS_TAB_TEMPLATE: &str = include_str!("../templates/init/zellij/analysis-tab.kdl");
 const ISSUE_ANALYSIS_README_TEMPLATE: &str =
     include_str!("../templates/init/issue-analysis/README.md");
@@ -19,6 +21,14 @@ const ISSUE_ANALYSIS_HOW_TEMPLATE: &str =
     include_str!("../templates/init/issue-analysis/02-how-we-build.md");
 const ISSUE_ANALYSIS_VERIFY_TEMPLATE: &str =
     include_str!("../templates/init/issue-analysis/03-how-we-verify.md");
+const ISSUE_IMPLEMENTATION_README_TEMPLATE: &str =
+    include_str!("../templates/init/issue-implementation/README.md");
+const ISSUE_IMPLEMENTATION_WHAT_TEMPLATE: &str =
+    include_str!("../templates/init/issue-implementation/01-what-we-build.md");
+const ISSUE_IMPLEMENTATION_HOW_TEMPLATE: &str =
+    include_str!("../templates/init/issue-implementation/02-how-we-build.md");
+const ISSUE_IMPLEMENTATION_VERIFY_TEMPLATE: &str =
+    include_str!("../templates/init/issue-implementation/03-how-we-verify.md");
 const CLAUDE_README_TEMPLATE: &str = include_str!("../templates/init/claude/README.md");
 const CODEX_README_TEMPLATE: &str = include_str!("../templates/init/codex/README.md");
 
@@ -38,6 +48,12 @@ pub fn init_project_files(paths: &ProjectPaths) -> Result<InitReport> {
         .with_context(|| format!("failed to create {}", paths.flows_dir.display()))?;
     fs::create_dir_all(&paths.issue_analysis_dir)
         .with_context(|| format!("failed to create {}", paths.issue_analysis_dir.display()))?;
+    fs::create_dir_all(&paths.issue_implementation_dir).with_context(|| {
+        format!(
+            "failed to create {}",
+            paths.issue_implementation_dir.display()
+        )
+    })?;
     fs::create_dir_all(&paths.claude_root)
         .with_context(|| format!("failed to create {}", paths.claude_root.display()))?;
     fs::create_dir_all(&paths.codex_root)
@@ -81,6 +97,12 @@ pub fn init_project_files(paths: &ProjectPaths) -> Result<InitReport> {
         &mut report.skipped,
     )?;
     write_if_missing(
+        &paths.issue_implementation_flow_path,
+        ISSUE_IMPLEMENTATION_FLOW_TEMPLATE,
+        &mut report.created,
+        &mut report.skipped,
+    )?;
+    write_if_missing(
         &paths.issue_analysis_readme_path,
         ISSUE_ANALYSIS_README_TEMPLATE,
         &mut report.created,
@@ -101,6 +123,30 @@ pub fn init_project_files(paths: &ProjectPaths) -> Result<InitReport> {
     write_if_missing(
         &paths.issue_analysis_verify_path,
         ISSUE_ANALYSIS_VERIFY_TEMPLATE,
+        &mut report.created,
+        &mut report.skipped,
+    )?;
+    write_if_missing(
+        &paths.issue_implementation_readme_path,
+        ISSUE_IMPLEMENTATION_README_TEMPLATE,
+        &mut report.created,
+        &mut report.skipped,
+    )?;
+    write_if_missing(
+        &paths.issue_implementation_what_path,
+        ISSUE_IMPLEMENTATION_WHAT_TEMPLATE,
+        &mut report.created,
+        &mut report.skipped,
+    )?;
+    write_if_missing(
+        &paths.issue_implementation_how_path,
+        ISSUE_IMPLEMENTATION_HOW_TEMPLATE,
+        &mut report.created,
+        &mut report.skipped,
+    )?;
+    write_if_missing(
+        &paths.issue_implementation_verify_path,
+        ISSUE_IMPLEMENTATION_VERIFY_TEMPLATE,
         &mut report.created,
         &mut report.skipped,
     )?;
@@ -214,17 +260,22 @@ mod tests {
         let paths = ProjectPaths::from_repo_root(&repo_root);
 
         let first = init_project_files(&paths).expect("first init");
-        assert_eq!(first.created.len(), 13);
+        assert_eq!(first.created.len(), 18);
         assert!(paths.settings_path.exists());
         assert!(paths.readme_path.exists());
         assert!(paths.analysis_tab_template_path.exists());
         assert!(paths.project_init_path.exists());
         assert!(paths.launch_agent_path.exists());
         assert!(paths.issue_analysis_flow_path.exists());
+        assert!(paths.issue_implementation_flow_path.exists());
         assert!(paths.issue_analysis_readme_path.exists());
         assert!(paths.issue_analysis_what_path.exists());
         assert!(paths.issue_analysis_how_path.exists());
         assert!(paths.issue_analysis_verify_path.exists());
+        assert!(paths.issue_implementation_readme_path.exists());
+        assert!(paths.issue_implementation_what_path.exists());
+        assert!(paths.issue_implementation_how_path.exists());
+        assert!(paths.issue_implementation_verify_path.exists());
         assert!(paths.claude_readme_path.exists());
         assert!(paths.codex_readme_path.exists());
         assert!(paths.root_init_path.exists());
@@ -235,7 +286,7 @@ mod tests {
 
         let second = init_project_files(&paths).expect("second init");
         assert_eq!(second.created.len(), 0);
-        assert_eq!(second.skipped.len(), 13);
+        assert_eq!(second.skipped.len(), 18);
 
         let settings = std::fs::read_to_string(&paths.settings_path).expect("settings");
         assert!(settings.contains("session_name: \"${REPO}\""));

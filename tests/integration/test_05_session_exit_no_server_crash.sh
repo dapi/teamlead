@@ -92,7 +92,7 @@ assert_session_alive "$OUTER_SESSION" "outer zellij session survives after agent
 # session rather than the fallback session from settings.
 ISSUE_INDEX="$REPO_ROOT/.git/.ai-teamlead/issues/99.json"
 if [[ -f "$ISSUE_INDEX" ]]; then
-    SESSION_UUID="$(jq -r '.session_uuid' "$ISSUE_INDEX")"
+    SESSION_UUID="$(issue_session_uuid "$ISSUE_INDEX")"
     LAUNCH_LOG="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/launch.log"
     LAYOUT_FILE="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/launch-layout.kdl"
     SESSION_MANIFEST="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/session.json"

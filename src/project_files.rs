@@ -16,6 +16,12 @@ pub struct ProjectPaths {
     pub issue_analysis_what_path: PathBuf,
     pub issue_analysis_how_path: PathBuf,
     pub issue_analysis_verify_path: PathBuf,
+    pub issue_implementation_flow_path: PathBuf,
+    pub issue_implementation_dir: PathBuf,
+    pub issue_implementation_readme_path: PathBuf,
+    pub issue_implementation_what_path: PathBuf,
+    pub issue_implementation_how_path: PathBuf,
+    pub issue_implementation_verify_path: PathBuf,
     pub readme_path: PathBuf,
     pub claude_root: PathBuf,
     pub claude_readme_path: PathBuf,
@@ -40,6 +46,12 @@ impl ProjectPaths {
         let issue_analysis_what_path = issue_analysis_dir.join("01-what-we-build.md");
         let issue_analysis_how_path = issue_analysis_dir.join("02-how-we-build.md");
         let issue_analysis_verify_path = issue_analysis_dir.join("03-how-we-verify.md");
+        let issue_implementation_flow_path = flows_dir.join("issue-implementation-flow.md");
+        let issue_implementation_dir = flows_dir.join("issue-implementation");
+        let issue_implementation_readme_path = issue_implementation_dir.join("README.md");
+        let issue_implementation_what_path = issue_implementation_dir.join("01-what-we-build.md");
+        let issue_implementation_how_path = issue_implementation_dir.join("02-how-we-build.md");
+        let issue_implementation_verify_path = issue_implementation_dir.join("03-how-we-verify.md");
         let readme_path = customization_root.join("README.md");
         let claude_root = repo_root.join(".claude");
         let claude_readme_path = claude_root.join("README.md");
@@ -62,6 +74,12 @@ impl ProjectPaths {
             issue_analysis_what_path,
             issue_analysis_how_path,
             issue_analysis_verify_path,
+            issue_implementation_flow_path,
+            issue_implementation_dir,
+            issue_implementation_readme_path,
+            issue_implementation_what_path,
+            issue_implementation_how_path,
+            issue_implementation_verify_path,
             readme_path,
             claude_root,
             claude_readme_path,
@@ -124,6 +142,30 @@ mod tests {
         assert_eq!(
             paths.issue_analysis_verify_path,
             Path::new("/repo/.ai-teamlead/flows/issue-analysis/03-how-we-verify.md")
+        );
+        assert_eq!(
+            paths.issue_implementation_flow_path,
+            Path::new("/repo/.ai-teamlead/flows/issue-implementation-flow.md")
+        );
+        assert_eq!(
+            paths.issue_implementation_dir,
+            Path::new("/repo/.ai-teamlead/flows/issue-implementation")
+        );
+        assert_eq!(
+            paths.issue_implementation_readme_path,
+            Path::new("/repo/.ai-teamlead/flows/issue-implementation/README.md")
+        );
+        assert_eq!(
+            paths.issue_implementation_what_path,
+            Path::new("/repo/.ai-teamlead/flows/issue-implementation/01-what-we-build.md")
+        );
+        assert_eq!(
+            paths.issue_implementation_how_path,
+            Path::new("/repo/.ai-teamlead/flows/issue-implementation/02-how-we-build.md")
+        );
+        assert_eq!(
+            paths.issue_implementation_verify_path,
+            Path::new("/repo/.ai-teamlead/flows/issue-implementation/03-how-we-verify.md")
         );
         assert_eq!(paths.readme_path, Path::new("/repo/.ai-teamlead/README.md"));
         assert_eq!(paths.claude_root, Path::new("/repo/.claude"));

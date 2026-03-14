@@ -37,6 +37,8 @@
 
 - [README.md](../../../README.md)
 - [docs/issue-analysis-flow.md](../../issue-analysis-flow.md)
+- [docs/issue-implementation-flow.md](../../issue-implementation-flow.md)
+- [docs/features/0004-issue-implementation-flow/README.md](../../features/0004-issue-implementation-flow/README.md)
 - [docs/adr/0001-repo-local-ai-config.md](../../adr/0001-repo-local-ai-config.md)
 - [docs/adr/0002-standalone-foreground-daemon.md](../../adr/0002-standalone-foreground-daemon.md)
 - [docs/adr/0003-github-project-status-as-source-of-truth.md](../../adr/0003-github-project-status-as-source-of-truth.md)
@@ -50,6 +52,9 @@
 - [docs/adr/0013-agent-session-history-as-dialog-source.md](../../adr/0013-agent-session-history-as-dialog-source.md)
 - [docs/adr/0014-zellij-launch-context-naming.md](../../adr/0014-zellij-launch-context-naming.md)
 - [docs/adr/0021-cli-contract-poll-run-loop.md](../../adr/0021-cli-contract-poll-run-loop.md)
+- [docs/adr/0024-stage-aware-run-dispatch.md](../../adr/0024-stage-aware-run-dispatch.md)
+- [docs/adr/0025-stage-aware-runtime-bindings.md](../../adr/0025-stage-aware-runtime-bindings.md)
+- [docs/adr/0026-stage-aware-complete-stage.md](../../adr/0026-stage-aware-complete-stage.md)
 
 ## Открытые вопросы
 
@@ -65,3 +70,4 @@
 ### 2026-03-14
 
 - feature выровнена с SSOT по контракту `poll` / `run` / `loop`
+- добавлены ссылки на implementation stage docs и stage-aware ADR

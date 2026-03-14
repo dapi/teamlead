@@ -15,7 +15,9 @@
   GitHub Project
 - `poll` не дублирует issue-level orchestration logic и использует общий
   `run`-path
-- перед запуском flow issue переводится в `Analysis In Progress`
+- перед запуском flow `run` корректно определяет stage issue
+- перед запуском выбранного flow issue переводится в `Analysis In Progress`
+  или `Implementation In Progress`
 - при ошибке смены статуса flow не стартует
 - `ai-teamlead` не использует локальную базу как источник истины по состоянию issue
 - `ai-teamlead` создает durable-связку между issue и `session_uuid`
@@ -31,7 +33,8 @@ Feature считается готовой к первому использова
 
 - `ai-teamlead` можно запустить в foreground в одном репозитории
 - команды `poll`, `run`, `loop` работают по документированным правилам
-- `ai-teamlead` способен запустить `issue-analysis-flow` в `zellij`
+- `ai-teamlead` способен запустить analysis и implementation flow через один
+  `run`
 - один репозиторий можно обслуживать без ручного редактирования кода
 - второй репозиторий можно подключить заменой только repo-local конфига
 - обязательные unit, integration и smoke tests для MVP пройдены
@@ -43,6 +46,7 @@ Feature считается готовой к первому использова
 - `./.ai-teamlead/settings.yml` живет в репозитории
 - при `max_parallel: 1` одновременно не должно запускаться больше одной issue
 - каждая issue в анализе имеет ровно одну связанную агентскую сессию
+- каждая issue имеет не более одного активного binding на stage
 - `loop` не вводит отдельную issue-level модель поведения относительно `poll`
 
 ## Сценарии проверки
@@ -76,6 +80,14 @@ Feature считается готовой к первому использова
 - при выполнении правил входа issue возвращается в
   `Analysis In Progress`
 - в новой `zellij` pane стартует новый агентский запуск
+
+### Сценарий 4a. Dispatch в implementation stage
+
+- issue находится в `Ready for Implementation`
+- пользователь явно запускает `run`
+- `run` выбирает implementation flow
+- issue переводится в `Implementation In Progress`
+- стартует implementation launcher path
 
 ### Сценарий 5. Foreground `loop`
 
@@ -142,6 +154,7 @@ Feature считается готовой к первому использова
 
 - [README.md](../../../README.md)
 - [docs/issue-analysis-flow.md](../../issue-analysis-flow.md)
+- [docs/issue-implementation-flow.md](../../issue-implementation-flow.md)
 - [docs/adr/0001-repo-local-ai-config.md](../../adr/0001-repo-local-ai-config.md)
 - [docs/adr/0002-standalone-foreground-daemon.md](../../adr/0002-standalone-foreground-daemon.md)
 - [docs/adr/0003-github-project-status-as-source-of-truth.md](../../adr/0003-github-project-status-as-source-of-truth.md)
@@ -152,3 +165,4 @@ Feature считается готовой к первому использова
 - [docs/adr/0009-deterministic-backlog-ordering.md](../../adr/0009-deterministic-backlog-ordering.md)
 - [docs/adr/0011-use-zellij-main-release-in-ci.md](../../adr/0011-use-zellij-main-release-in-ci.md)
 - [docs/adr/0021-cli-contract-poll-run-loop.md](../../adr/0021-cli-contract-poll-run-loop.md)
+- [docs/adr/0024-stage-aware-run-dispatch.md](../../adr/0024-stage-aware-run-dispatch.md)

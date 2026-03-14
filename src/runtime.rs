@@ -6,6 +6,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::config::ZellijConfig;
+use crate::domain::FlowStage;
 use crate::repo::RepoContext;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +47,8 @@ impl RuntimeLayout {
         project_id: &str,
         zellij: &ZellijConfig,
         issue_number: u64,
+        stage: FlowStage,
+        flow_status: &str,
     ) -> Result<SessionManifest> {
         let session_uuid = uuid::Uuid::new_v4().to_string();
         let timestamp = Utc::now().to_rfc3339();
@@ -56,6 +59,7 @@ impl RuntimeLayout {
             github_owner: repo.github_owner.clone(),
             github_repo: repo.github_repo.clone(),
             project_id: project_id.to_string(),
+            stage,
             status: "active".to_string(),
             created_at: timestamp.clone(),
             updated_at: timestamp.clone(),
@@ -67,12 +71,19 @@ impl RuntimeLayout {
                 pane_id: "pending".to_string(),
             },
         };
-        let index = IssueSessionIndex {
-            issue_number,
-            session_uuid: session_uuid.clone(),
-            last_known_flow_status: "Analysis In Progress".to_string(),
-            updated_at: timestamp,
-        };
+        let mut index = self
+            .load_issue_index(issue_number)?
+            .unwrap_or(IssueSessionIndex {
+                issue_number,
+                bindings: IssueStageBindings::default(),
+                legacy_session_uuid: None,
+                last_known_flow_status: flow_status.to_string(),
+                updated_at: timestamp.clone(),
+            });
+        index.bindings.set(stage, session_uuid.clone());
+        index.legacy_session_uuid = None;
+        index.last_known_flow_status = flow_status.to_string();
+        index.updated_at = timestamp;
 
         let session_dir = self.sessions_dir.join(&session_uuid);
         fs::create_dir_all(&session_dir)
@@ -85,7 +96,14 @@ impl RuntimeLayout {
     }
 
     pub fn load_issue_index(&self, issue_number: u64) -> Result<Option<IssueSessionIndex>> {
-        self.read_optional_json(self.issues_dir.join(format!("{issue_number}.json")))
+        let Some(mut index) = self.read_optional_json::<IssueSessionIndex>(
+            self.issues_dir.join(format!("{issue_number}.json")),
+        )?
+        else {
+            return Ok(None);
+        };
+        index.normalize_legacy_bindings();
+        Ok(Some(index))
     }
 
     pub fn load_session_manifest(&self, session_uuid: &str) -> Result<Option<SessionManifest>> {
@@ -134,6 +152,7 @@ impl RuntimeLayout {
             .ok_or_else(|| anyhow!("missing issue session index for issue #{issue_number}"))?;
         index.last_known_flow_status = flow_status.to_string();
         index.updated_at = Utc::now().to_rfc3339();
+        index.legacy_session_uuid = None;
 
         write_json_pretty(self.issues_dir.join(format!("{issue_number}.json")), &index)?;
         Ok(())
@@ -166,6 +185,7 @@ pub struct SessionManifest {
     pub github_owner: String,
     pub github_repo: String,
     pub project_id: String,
+    pub stage: FlowStage,
     pub status: String,
     pub created_at: String,
     pub updated_at: String,
@@ -184,9 +204,61 @@ pub struct ZellijBinding {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IssueSessionIndex {
     pub issue_number: u64,
-    pub session_uuid: String,
+    #[serde(default)]
+    pub bindings: IssueStageBindings,
+    #[serde(
+        default,
+        rename = "session_uuid",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub legacy_session_uuid: Option<String>,
     pub last_known_flow_status: String,
     pub updated_at: String,
+}
+
+impl IssueSessionIndex {
+    fn normalize_legacy_bindings(&mut self) {
+        if self.bindings.analysis.is_none()
+            && self.bindings.implementation.is_none()
+            && self.legacy_session_uuid.is_some()
+        {
+            self.bindings.analysis = self.legacy_session_uuid.clone();
+        }
+    }
+
+    pub fn session_uuid_for_stage(&self, stage: FlowStage) -> Option<&str> {
+        self.bindings.session_uuid(stage)
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IssueStageBindings {
+    #[serde(default)]
+    pub analysis: Option<String>,
+    #[serde(default)]
+    pub implementation: Option<String>,
+}
+
+impl IssueStageBindings {
+    pub fn new(stage: FlowStage, session_uuid: String) -> Self {
+        let mut bindings = Self::default();
+        bindings.set(stage, session_uuid);
+        bindings
+    }
+
+    pub fn set(&mut self, stage: FlowStage, session_uuid: String) {
+        match stage {
+            FlowStage::Analysis => self.analysis = Some(session_uuid),
+            FlowStage::Implementation => self.implementation = Some(session_uuid),
+        }
+    }
+
+    pub fn session_uuid(&self, stage: FlowStage) -> Option<&str> {
+        match stage {
+            FlowStage::Analysis => self.analysis.as_deref(),
+            FlowStage::Implementation => self.implementation.as_deref(),
+        }
+    }
 }
 
 fn write_json_pretty<T: Serialize>(path: PathBuf, value: &T) -> Result<()> {
@@ -199,6 +271,7 @@ fn write_json_pretty<T: Serialize>(path: PathBuf, value: &T) -> Result<()> {
 mod tests {
     use super::{RuntimeLayout, SessionManifest};
     use crate::config::ZellijConfig;
+    use crate::domain::FlowStage;
     use crate::repo::RepoContext;
     use std::path::Path;
     use tempfile::tempdir;
@@ -241,7 +314,14 @@ mod tests {
         };
 
         let manifest = layout
-            .create_claim_binding(&repo, "PVT_project", &zellij, 42)
+            .create_claim_binding(
+                &repo,
+                "PVT_project",
+                &zellij,
+                42,
+                FlowStage::Analysis,
+                "Analysis In Progress",
+            )
             .expect("claim binding");
 
         let session_path = layout
@@ -258,6 +338,7 @@ mod tests {
         )
         .expect("session manifest should parse");
         assert_eq!(stored.issue_number, 42);
+        assert_eq!(stored.stage, FlowStage::Analysis);
         assert_eq!(stored.zellij.pane_id, "pending");
     }
 
@@ -284,7 +365,14 @@ mod tests {
         };
 
         let manifest = layout
-            .create_claim_binding(&repo, "PVT_project", &zellij, 42)
+            .create_claim_binding(
+                &repo,
+                "PVT_project",
+                &zellij,
+                42,
+                FlowStage::Analysis,
+                "Analysis In Progress",
+            )
             .expect("claim binding");
 
         let updated = layout
@@ -319,7 +407,14 @@ mod tests {
         };
 
         let manifest = layout
-            .create_claim_binding(&repo, "PVT_project", &zellij, 42)
+            .create_claim_binding(
+                &repo,
+                "PVT_project",
+                &zellij,
+                42,
+                FlowStage::Analysis,
+                "Analysis In Progress",
+            )
             .expect("claim binding");
 
         assert_eq!(manifest.status, "active");
@@ -334,5 +429,94 @@ mod tests {
             .expect("reload")
             .expect("manifest exists");
         assert_eq!(reloaded.status, "completed");
+    }
+
+    #[test]
+    fn loads_legacy_issue_index_as_analysis_binding() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        let git_dir = repo_root.join(".git");
+        std::fs::create_dir_all(&git_dir).expect("git dir");
+
+        let layout = RuntimeLayout::from_repo_root(&repo_root);
+        layout.ensure_exists().expect("runtime layout");
+
+        let legacy = serde_json::json!({
+            "issue_number": 42,
+            "session_uuid": "legacy-session",
+            "last_known_flow_status": "Waiting for Plan Review",
+            "updated_at": "2026-03-14T00:00:00Z"
+        });
+        std::fs::write(
+            layout.issues_dir.join("42.json"),
+            serde_json::to_vec_pretty(&legacy).expect("json"),
+        )
+        .expect("write");
+
+        let index = layout
+            .load_issue_index(42)
+            .expect("load")
+            .expect("index exists");
+        assert_eq!(
+            index.session_uuid_for_stage(FlowStage::Analysis),
+            Some("legacy-session")
+        );
+    }
+
+    #[test]
+    fn preserves_existing_stage_bindings_when_claiming_new_stage() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        let git_dir = repo_root.join(".git");
+        std::fs::create_dir_all(&git_dir).expect("git dir");
+
+        let layout = RuntimeLayout::from_repo_root(&repo_root);
+        layout.ensure_exists().expect("runtime layout");
+
+        let repo = RepoContext {
+            repo_root: repo_root.clone(),
+            git_dir,
+            github_owner: "dapi".into(),
+            github_repo: "teamlead".into(),
+        };
+        let zellij = ZellijConfig {
+            session_name: "ai-teamlead".into(),
+            tab_name: "issue-analysis".into(),
+            layout: None,
+        };
+
+        let analysis = layout
+            .create_claim_binding(
+                &repo,
+                "PVT_project",
+                &zellij,
+                42,
+                FlowStage::Analysis,
+                "Analysis In Progress",
+            )
+            .expect("analysis claim binding");
+        let implementation = layout
+            .create_claim_binding(
+                &repo,
+                "PVT_project",
+                &zellij,
+                42,
+                FlowStage::Implementation,
+                "Implementation In Progress",
+            )
+            .expect("implementation claim binding");
+
+        let index = layout
+            .load_issue_index(42)
+            .expect("load")
+            .expect("index exists");
+        assert_eq!(
+            index.session_uuid_for_stage(FlowStage::Analysis),
+            Some(analysis.session_uuid.as_str())
+        );
+        assert_eq!(
+            index.session_uuid_for_stage(FlowStage::Implementation),
+            Some(implementation.session_uuid.as_str())
+        );
     }
 }

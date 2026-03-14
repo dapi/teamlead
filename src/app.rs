@@ -5,7 +5,11 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 
-use crate::cli::{Cli, Command, InternalCommand};
+use crate::agent_flow::{
+    AgentFlowTestRequest, plan_agent_flow_test, print_plan, print_sandbox_result,
+    run_agent_flow_test,
+};
+use crate::cli::{Cli, Command, InternalCommand, TestAgentFlowArgs, TestCommand};
 use crate::complete_stage::run_complete_stage;
 use crate::config::Config;
 use crate::domain::{can_run_analysis, parse_issue_ref, select_next_backlog_project_item};
@@ -24,6 +28,7 @@ pub fn run() -> Result<()> {
 
     match cli.command {
         Command::Init => run_init(&shell),
+        Command::Test { test } => run_test(&shell, test),
         Command::Poll { zellij_session } => run_poll(&shell, zellij_session.as_deref()),
         Command::Loop { zellij_session } => run_loop(&shell, zellij_session.as_deref()),
         Command::Run {
@@ -33,6 +38,34 @@ pub fn run() -> Result<()> {
         } => run_manual_run(&shell, &issue, debug, zellij_session.as_deref()),
         Command::Internal { internal } => run_internal(&shell, internal),
     }
+}
+
+fn run_test(shell: &dyn Shell, test: TestCommand) -> Result<()> {
+    match test {
+        TestCommand::AgentFlow(args) => run_test_agent_flow(shell, args),
+    }
+}
+
+fn run_test_agent_flow(shell: &dyn Shell, args: TestAgentFlowArgs) -> Result<()> {
+    let cwd = std::env::current_dir().context("failed to get current directory")?;
+    let repo = RepoContext::discover(shell, &cwd)?;
+    let plan = plan_agent_flow_test(
+        &repo.repo_root,
+        &repo.git_dir,
+        &AgentFlowTestRequest {
+            scenario: args.scenario,
+            agent: args.agent,
+            mode: args.mode,
+            keep_sandbox: args.keep_sandbox,
+            artifacts_dir: args.artifacts_dir,
+            timeout_seconds: args.timeout_seconds,
+            no_build: args.no_build,
+        },
+    )?;
+    print_plan(&plan);
+    let result = run_agent_flow_test(shell, &repo.repo_root, &repo.git_dir, &plan)?;
+    print_sandbox_result(&result);
+    Ok(())
 }
 
 fn run_init(shell: &dyn Shell) -> Result<()> {

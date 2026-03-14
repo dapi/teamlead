@@ -148,6 +148,11 @@ Session UUID: $SESSION_UUID
 Analysis branch: $BRANCH
 Analysis artifacts dir: $ANALYSIS_ARTIFACTS_DIR"
 
+    local agent_bin="${AI_TEAMLEAD_AGENT_BIN:-}"
+    if [[ -n "$agent_bin" && -x "$agent_bin" ]]; then
+        exec "$agent_bin" --cd "$WORKTREE_ROOT" --no-alt-screen "$prompt"
+    fi
+
     if command -v codex >/dev/null 2>&1; then
         exec codex --cd "$WORKTREE_ROOT" --no-alt-screen "$prompt"
     fi

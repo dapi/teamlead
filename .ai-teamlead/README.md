@@ -21,6 +21,8 @@
 - `flows/issue-analysis/01-what-we-build.md` — prompt оси `Что строим`
 - `flows/issue-analysis/02-how-we-build.md` — prompt оси `Как строим`
 - `flows/issue-analysis/03-how-we-verify.md` — prompt оси `Как проверяем`
+- `tests/agent-flow/*.yml` — versioned scenario manifests для
+  `ai-teamlead test agent-flow`
 
 Базовый системный контракт flow остается в документации `ai-teamlead`, а файлы
 в этом каталоге задают project-specific адаптацию.

@@ -64,12 +64,23 @@ impl<'a> ZellijLauncher<'a> {
         let quoted_binary = shell_single_quote(binary_path.to_string_lossy().as_ref());
         let quoted_launch_log = shell_single_quote(launch_log_path.to_string_lossy().as_ref());
         let debug_flag = if debug { "1" } else { "0" };
+        let agent_binary_export = std::env::var("AI_TEAMLEAD_AGENT_BIN")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| {
+                format!(
+                    "export AI_TEAMLEAD_AGENT_BIN={}\n",
+                    shell_single_quote(value.trim())
+                )
+            })
+            .unwrap_or_default();
 
         let entrypoint = format!(
             "#!/usr/bin/env bash\n\
 set -euo pipefail\n\
 cd {quoted_repo_root}\n\
 export AI_TEAMLEAD_BIN={quoted_binary}\n\
+{agent_binary_export}\
 export AI_TEAMLEAD_DEBUG={debug_flag}\n\
 export AI_TEAMLEAD_LAUNCH_LOG={quoted_launch_log}\n\
 mkdir -p \"$(dirname \"$AI_TEAMLEAD_LAUNCH_LOG\")\"\n\

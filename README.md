@@ -65,21 +65,22 @@
 - [docs/implementation-plan.md](./docs/implementation-plan.md)
 - [docs/templates/feature-spec-template.md](./docs/templates/feature-spec-template.md)
 - [docs/issue-analysis-flow.md](./docs/issue-analysis-flow.md)
+- [docs/issue-implementation-flow.md](./docs/issue-implementation-flow.md)
 - [docs/features/0001-ai-teamlead-cli/README.md](./docs/features/0001-ai-teamlead-cli/README.md)
 - [docs/features/0002-repo-init/README.md](./docs/features/0002-repo-init/README.md)
 - [docs/features/0003-agent-launch-orchestration/README.md](./docs/features/0003-agent-launch-orchestration/README.md)
+- [docs/features/0004-issue-implementation-flow/README.md](./docs/features/0004-issue-implementation-flow/README.md)
 - [docs/features/0005-agent-flow-integration-testing/README.md](./docs/features/0005-agent-flow-integration-testing/README.md)
 - [AURA.md](./AURA.md) как project-local доступ к
   личному высокоуровневому инженерному видению разработчика
 
 ## MVP
 
-MVP делает только анализ задач и подготовку плана реализации.
+Первая завершенная MVP-граница проекта покрывала только analysis stage и
+подготовку плана реализации.
 
-MVP не делает:
-
-- автоматическую реализацию
-- создание implementation-коммитов или PR
+Следующий stage проекта добавляет отдельный implementation flow, но он остается
+отдельным каноническим contract layer и не смешивается с analysis SSOT.
 
 ## Модель запуска
 
@@ -88,9 +89,9 @@ MVP не делает:
 - `init` — подключение репозитория, создание project-local contract layer
 - `poll` — один цикл просмотра project snapshot: выбирает подходящую issue из
   `Backlog` и передает ее в общий issue-level `run`-path
-- `run` — канонический issue-level entrypoint: проверяет допустимость входа,
-  переводит статус, работает с `session_uuid` и запускает или восстанавливает
-  launcher path
+- `run` — канонический issue-level entrypoint: определяет текущий stage issue,
+  выбирает analysis или implementation flow, переводит статус, работает с
+  `session_uuid` и запускает или восстанавливает launcher path
 - `loop` — бесконечный foreground loop поверх `poll` с паузой из
   `runtime.poll_interval_seconds`
 
@@ -104,8 +105,11 @@ MVP не делает:
 
 Источник истины по состоянию задачи это поле статуса в default GitHub Project.
 
-Канонический flow-контракт, модель статусов и правила переходов зафиксированы в
-[docs/issue-analysis-flow.md](./docs/issue-analysis-flow.md).
+Канонические flow-контракты, модели статусов и правила переходов зафиксированы
+в:
+
+- [docs/issue-analysis-flow.md](./docs/issue-analysis-flow.md)
+- [docs/issue-implementation-flow.md](./docs/issue-implementation-flow.md)
 
 Постоянное локальное runtime state не используется как источник истины.
 Локально могут существовать только временные рабочие файлы.
@@ -142,6 +146,20 @@ Flow анализа и CLI-контракт вынесены в отдельны
 - для `feature` дополнительно обязательны `User Story` и `Use Cases`
 - у flow есть human gate на ответах на вопросы и на принятии плана
 
+## Flow реализации
+
+Flow реализации и handoff после принятия плана вынесены в отдельный SSOT:
+
+- [docs/issue-implementation-flow.md](./docs/issue-implementation-flow.md)
+
+Коротко:
+
+- оператор по-прежнему использует `run <issue>`;
+- `run` сам определяет, что issue уже находится в implementation lifecycle;
+- реализация опирается на approved analysis artifacts;
+- implementation stage ведет issue через `Implementation In Progress`,
+  `Waiting for CI`, `Waiting for Code Review` и `Implementation Blocked`.
+
 ## Статусы проекта
 
 Ниже приведен только summary для быстрого ориентирования.
@@ -157,6 +175,13 @@ Flow анализа и CLI-контракт вынесены в отдельны
 - `Waiting for Plan Review`
 - `Ready for Implementation`
 - `Analysis Blocked`
+
+Для flow реализации используются следующие дополнительные статусы:
+
+- `Implementation In Progress`
+- `Waiting for CI`
+- `Waiting for Code Review`
+- `Implementation Blocked`
 
 ## Конфигурация
 
@@ -201,6 +226,14 @@ issue_analysis_flow:
     ready_for_implementation: "Ready for Implementation"
     analysis_blocked: "Analysis Blocked"
 
+issue_implementation_flow:
+  statuses:
+    ready_for_implementation: "Ready for Implementation"
+    implementation_in_progress: "Implementation In Progress"
+    waiting_for_ci: "Waiting for CI"
+    waiting_for_code_review: "Waiting for Code Review"
+    implementation_blocked: "Implementation Blocked"
+
 runtime:
   max_parallel: 1
   poll_interval_seconds: 3600
@@ -213,6 +246,9 @@ launch_agent:
   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
   worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+  implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
+  implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+  implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
 ```
 
 `zellij.session_name` задает versioned fallback для target session, а

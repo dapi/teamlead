@@ -3,7 +3,19 @@ set -euo pipefail
 
 SESSION_UUID="${1:?usage: launch-agent.sh <session_uuid> <issue_url>}"
 ISSUE_URL="${2:?usage: launch-agent.sh <session_uuid> <issue_url>}"
-FLOW_PATH="./.ai-teamlead/flows/issue-analysis-flow.md"
+FLOW_STAGE="${AI_TEAMLEAD_FLOW_STAGE:-analysis}"
+case "$FLOW_STAGE" in
+  analysis)
+    FLOW_PATH="./.ai-teamlead/flows/issue-analysis-flow.md"
+    ;;
+  implementation)
+    FLOW_PATH="./.ai-teamlead/flows/issue-implementation-flow.md"
+    ;;
+  *)
+    printf 'launch-agent.sh: unsupported flow stage: %s\n' "$FLOW_STAGE" >&2
+    exit 1
+    ;;
+esac
 REPO_ROOT="$(pwd -P)"
 
 AI_TEAMLEAD_BIN="${AI_TEAMLEAD_BIN:-ai-teamlead}"
@@ -31,7 +43,7 @@ append_launch_log() {
 }
 
 enable_debug_trace
-append_launch_log "bootstrap session_uuid=$SESSION_UUID issue_url=$ISSUE_URL"
+append_launch_log "bootstrap stage=$FLOW_STAGE session_uuid=$SESSION_UUID issue_url=$ISSUE_URL"
 
 if ! command -v "$AI_TEAMLEAD_BIN" >/dev/null 2>&1; then
     append_launch_log "ai-teamlead binary is not available: $AI_TEAMLEAD_BIN"
@@ -48,7 +60,7 @@ if [[ ! -f "$FLOW_PATH" ]]; then
     exit 1
 fi
 
-append_launch_log "rendering launch-agent context for $ISSUE_URL"
+append_launch_log "rendering launch-agent context for stage=$FLOW_STAGE issue=$ISSUE_URL"
 eval "$("$AI_TEAMLEAD_BIN" internal render-launch-agent-context "$ISSUE_URL")"
 
 detect_default_branch() {
@@ -108,7 +120,7 @@ find_worktree_for_branch() {
     return 1
 }
 
-ensure_analysis_worktree() {
+ensure_stage_worktree() {
     local existing_worktree
     existing_worktree="$(find_worktree_for_branch "$BRANCH" || true)"
     if [[ -n "$existing_worktree" ]]; then
@@ -145,8 +157,9 @@ start_agent() {
 
 Issue URL: $ISSUE_URL
 Session UUID: $SESSION_UUID
-Analysis branch: $BRANCH
-Analysis artifacts dir: $ANALYSIS_ARTIFACTS_DIR"
+Flow stage: $FLOW_STAGE
+Stage branch: $BRANCH
+Stage artifacts dir: $ARTIFACTS_DIR"
 
     if command -v codex >/dev/null 2>&1; then
         exec codex --cd "$WORKTREE_ROOT" --no-alt-screen "$prompt"
@@ -156,19 +169,28 @@ Analysis artifacts dir: $ANALYSIS_ARTIFACTS_DIR"
     exec "${SHELL:-/bin/bash}" -l
 }
 
-ensure_analysis_worktree
+ensure_stage_worktree
 cd "$WORKTREE_ROOT"
 append_launch_log "worktree ready at $WORKTREE_ROOT"
 run_project_init
-mkdir -p "$ANALYSIS_ARTIFACTS_DIR"
-append_launch_log "artifacts dir ready at $ANALYSIS_ARTIFACTS_DIR"
+mkdir -p "$ARTIFACTS_DIR"
+append_launch_log "artifacts dir ready at $ARTIFACTS_DIR"
 
 export AI_TEAMLEAD_SESSION_UUID="$SESSION_UUID"
 export AI_TEAMLEAD_ISSUE_URL="$ISSUE_URL"
-export AI_TEAMLEAD_ANALYSIS_BRANCH="$BRANCH"
+export AI_TEAMLEAD_FLOW_STAGE="$FLOW_STAGE"
+export AI_TEAMLEAD_BRANCH="$BRANCH"
 export AI_TEAMLEAD_WORKTREE_ROOT="$WORKTREE_ROOT"
-export AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR="$ANALYSIS_ARTIFACTS_DIR"
+export AI_TEAMLEAD_ARTIFACTS_DIR="$ARTIFACTS_DIR"
 export AI_TEAMLEAD_REPO_ROOT="$REPO_ROOT"
+if [[ "$FLOW_STAGE" == "analysis" ]]; then
+    export AI_TEAMLEAD_ANALYSIS_BRANCH="$BRANCH"
+    export AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR="$ARTIFACTS_DIR"
+fi
+if [[ "$FLOW_STAGE" == "implementation" ]]; then
+    export AI_TEAMLEAD_IMPLEMENTATION_BRANCH="$BRANCH"
+    export AI_TEAMLEAD_IMPLEMENTATION_ARTIFACTS_DIR="$ARTIFACTS_DIR"
+fi
 
 append_launch_log "starting agent in $WORKTREE_ROOT"
 start_agent

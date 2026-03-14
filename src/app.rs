@@ -8,7 +8,9 @@ use clap::Parser;
 use crate::cli::{Cli, Command, InternalCommand};
 use crate::complete_stage::run_complete_stage;
 use crate::config::Config;
-use crate::domain::{can_run_analysis, parse_issue_ref, select_next_backlog_project_item};
+use crate::domain::{
+    FlowStage, decide_run_stage, parse_issue_ref, select_next_backlog_project_item,
+};
 use crate::github::{GhProjectClient, ProjectIssueItem, ProjectSnapshot};
 use crate::init::init_project_files;
 use crate::project_files::ProjectPaths;
@@ -215,33 +217,43 @@ fn run_issue_entrypoint(
         )
     })?;
 
-    let allowed = can_run_analysis(current_status, &context.config.issue_analysis_flow.statuses);
-    if !allowed.allowed {
+    let decision = decide_run_stage(
+        current_status,
+        &context.config.issue_analysis_flow.statuses,
+        &context.config.issue_implementation_flow.statuses,
+    );
+    if !decision.allowed {
         bail!(
             "run denied for issue #{}: {}",
             issue.issue_number,
-            allowed.reason
+            decision.reason
         );
     }
+    let stage = decision
+        .stage
+        .expect("allowed run decision must include stage");
 
-    let manifest = prepare_session_manifest(context, github, snapshot, issue, current_status)?;
+    let manifest =
+        prepare_session_manifest(context, github, snapshot, issue, current_status, stage)?;
     let issue_url = format!(
         "https://github.com/{}/{}/issues/{}",
         context.repo.github_owner, context.repo.github_repo, issue.issue_number
     );
     let binary_path = std::env::current_exe().context("failed to resolve ai-teamlead binary")?;
-    if let Err(error) = zellij.launch_issue_analysis(
+    if let Err(error) = zellij.launch_issue_stage(
         &context.repo,
         &context.repo.repo_root,
         &context.runtime,
         &context.config.zellij,
+        stage,
         &issue_url,
         &manifest.session_uuid,
         &binary_path,
         debug,
     ) {
-        mark_issue_as_blocked(context, github, snapshot, issue);
-        return Err(error).context("failed to launch zellij issue-analysis session");
+        mark_issue_as_blocked(context, github, snapshot, issue, stage);
+        return Err(error)
+            .with_context(|| format!("failed to launch zellij {} session", stage.as_str()));
     }
 
     Ok(LaunchOutcome {
@@ -256,26 +268,48 @@ fn prepare_session_manifest(
     snapshot: &ProjectSnapshot,
     issue: &ProjectIssueItem,
     current_status: &str,
+    stage: FlowStage,
 ) -> Result<SessionManifest> {
-    let analysis_in_progress = &context
-        .config
-        .issue_analysis_flow
-        .statuses
-        .analysis_in_progress;
+    let target_status = match stage {
+        FlowStage::Analysis => context
+            .config
+            .issue_analysis_flow
+            .statuses
+            .analysis_in_progress
+            .as_str(),
+        FlowStage::Implementation => context
+            .config
+            .issue_implementation_flow
+            .statuses
+            .implementation_in_progress
+            .as_str(),
+    };
 
-    if current_status == context.config.issue_analysis_flow.statuses.backlog {
+    let claim_status = match stage {
+        FlowStage::Analysis => context.config.issue_analysis_flow.statuses.backlog.as_str(),
+        FlowStage::Implementation => context
+            .config
+            .issue_implementation_flow
+            .statuses
+            .ready_for_implementation
+            .as_str(),
+    };
+
+    if current_status == claim_status {
         github.update_status(
             &context.repo.repo_root,
             &context.config.github.project_id,
             &issue.item_id,
             &snapshot.status_field_id,
-            snapshot.option_id_by_name(analysis_in_progress)?,
+            snapshot.option_id_by_name(target_status)?,
         )?;
         return context.runtime.create_claim_binding(
             &context.repo,
             &context.config.github.project_id,
             &context.config.zellij,
             issue.issue_number,
+            stage,
+            target_status,
         );
     }
 
@@ -288,23 +322,37 @@ fn prepare_session_manifest(
                 issue.issue_number
             )
         })?;
+    let session_uuid = issue_index.session_uuid_for_stage(stage).ok_or_else(|| {
+        anyhow::anyhow!(
+            "missing {} session index for issue #{}",
+            stage.as_str(),
+            issue.issue_number
+        )
+    })?;
     let manifest = context
         .runtime
-        .load_session_manifest(&issue_index.session_uuid)?
+        .load_session_manifest(session_uuid)?
         .ok_or_else(|| {
             anyhow::anyhow!("missing session manifest for issue #{}", issue.issue_number)
         })?;
+    anyhow::ensure!(
+        manifest.stage == stage,
+        "session manifest stage mismatch for issue #{}: expected {}, got {}",
+        issue.issue_number,
+        stage.as_str(),
+        manifest.stage.as_str(),
+    );
 
     github.update_status(
         &context.repo.repo_root,
         &context.config.github.project_id,
         &issue.item_id,
         &snapshot.status_field_id,
-        snapshot.option_id_by_name(analysis_in_progress)?,
+        snapshot.option_id_by_name(target_status)?,
     )?;
     context
         .runtime
-        .update_issue_flow_status(issue.issue_number, analysis_in_progress)?;
+        .update_issue_flow_status(issue.issue_number, target_status)?;
 
     Ok(manifest)
 }
@@ -314,10 +362,24 @@ fn mark_issue_as_blocked(
     github: &GhProjectClient<'_>,
     snapshot: &ProjectSnapshot,
     issue: &ProjectIssueItem,
+    stage: FlowStage,
 ) {
-    if let Ok(blocked_option_id) =
-        snapshot.option_id_by_name(&context.config.issue_analysis_flow.statuses.analysis_blocked)
-    {
+    let blocked_status = match stage {
+        FlowStage::Analysis => context
+            .config
+            .issue_analysis_flow
+            .statuses
+            .analysis_blocked
+            .as_str(),
+        FlowStage::Implementation => context
+            .config
+            .issue_implementation_flow
+            .statuses
+            .implementation_blocked
+            .as_str(),
+    };
+
+    if let Ok(blocked_option_id) = snapshot.option_id_by_name(blocked_status) {
         let _ = github.update_status(
             &context.repo.repo_root,
             &context.config.github.project_id,
@@ -327,10 +389,9 @@ fn mark_issue_as_blocked(
         );
     }
 
-    let _ = context.runtime.update_issue_flow_status(
-        issue.issue_number,
-        &context.config.issue_analysis_flow.statuses.analysis_blocked,
-    );
+    let _ = context
+        .runtime
+        .update_issue_flow_status(issue.issue_number, blocked_status);
 }
 
 fn print_zellij_launch_target(
@@ -397,9 +458,10 @@ fn run_internal(shell: &dyn Shell, internal: InternalCommand) -> Result<()> {
         }
         InternalCommand::CompleteStage {
             session_uuid,
+            stage,
             outcome,
             message,
-        } => run_complete_stage(shell, &session_uuid, &outcome, &message),
+        } => run_complete_stage(shell, &session_uuid, &stage, &outcome, &message),
     }
 }
 
@@ -426,6 +488,12 @@ fn run_internal_launch_zellij_fixture(shell: &dyn Shell, issue_number: u64) -> R
         &context.config.github.project_id,
         &context.config.zellij,
         issue_number,
+        FlowStage::Analysis,
+        &context
+            .config
+            .issue_analysis_flow
+            .statuses
+            .analysis_in_progress,
     )?;
     let zellij = ZellijLauncher::new(shell);
     let issue_url = format!(
@@ -433,11 +501,12 @@ fn run_internal_launch_zellij_fixture(shell: &dyn Shell, issue_number: u64) -> R
         context.repo.github_owner, context.repo.github_repo, issue_number
     );
     let binary_path = std::env::current_exe().context("failed to resolve ai-teamlead binary")?;
-    zellij.launch_issue_analysis(
+    zellij.launch_issue_stage(
         &context.repo,
         &context.repo.repo_root,
         &context.runtime,
         &context.config.zellij,
+        FlowStage::Analysis,
         &issue_url,
         &manifest.session_uuid,
         &binary_path,
@@ -454,19 +523,26 @@ fn run_internal_render_launch_agent_context(shell: &dyn Shell, issue_ref: &str) 
     let context = load_execution_context(shell, None)?;
     let issue_number = parse_issue_ref(issue_ref)
         .with_context(|| format!("failed to parse issue reference: {issue_ref}"))?;
-    let rendered = render_launch_agent_context(&context, issue_number)?;
+    let flow_stage = std::env::var("AI_TEAMLEAD_FLOW_STAGE")
+        .ok()
+        .as_deref()
+        .and_then(|value| match value {
+            "implementation" => Some(FlowStage::Implementation),
+            "analysis" => Some(FlowStage::Analysis),
+            _ => None,
+        })
+        .unwrap_or(FlowStage::Analysis);
+    let rendered = render_launch_agent_context(&context, issue_number, flow_stage)?;
 
     println!(
         "ISSUE_NUMBER={}",
         shell_quote(&rendered.issue_number.to_string())
     );
     println!("REPO={}", shell_quote(&rendered.repo_name));
-    println!("BRANCH={}", shell_quote(&rendered.analysis_branch));
+    println!("FLOW_STAGE={}", shell_quote(rendered.stage.as_str()));
+    println!("BRANCH={}", shell_quote(&rendered.branch));
     println!("WORKTREE_ROOT={}", shell_quote(&rendered.worktree_root));
-    println!(
-        "ANALYSIS_ARTIFACTS_DIR={}",
-        shell_quote(&rendered.analysis_artifacts_dir)
-    );
+    println!("ARTIFACTS_DIR={}", shell_quote(&rendered.artifacts_dir));
     Ok(())
 }
 
@@ -529,21 +605,46 @@ fn resolve_zellij_session_name(
 struct LaunchAgentContext {
     issue_number: u64,
     repo_name: String,
-    analysis_branch: String,
+    stage: FlowStage,
+    branch: String,
     worktree_root: String,
-    analysis_artifacts_dir: String,
+    artifacts_dir: String,
 }
 
 fn render_launch_agent_context(
     context: &ExecutionContext,
     issue_number: u64,
+    stage: FlowStage,
 ) -> Result<LaunchAgentContext> {
     let repo_name = context.repo.github_repo.clone();
     let home = std::env::var("HOME").context("HOME is not set")?;
     let issue_number_str = issue_number.to_string();
 
-    let analysis_branch = render_template(
-        &context.config.launch_agent.analysis_branch_template,
+    let branch_template = match stage {
+        FlowStage::Analysis => &context.config.launch_agent.analysis_branch_template,
+        FlowStage::Implementation => &context.config.launch_agent.implementation_branch_template,
+    };
+    let worktree_template = match stage {
+        FlowStage::Analysis => &context.config.launch_agent.worktree_root_template,
+        FlowStage::Implementation => {
+            &context
+                .config
+                .launch_agent
+                .implementation_worktree_root_template
+        }
+    };
+    let artifacts_template = match stage {
+        FlowStage::Analysis => &context.config.launch_agent.analysis_artifacts_dir_template,
+        FlowStage::Implementation => {
+            &context
+                .config
+                .launch_agent
+                .implementation_artifacts_dir_template
+        }
+    };
+
+    let branch = render_template(
+        branch_template,
         &[
             ("HOME", home.as_str()),
             ("REPO", repo_name.as_str()),
@@ -551,30 +652,31 @@ fn render_launch_agent_context(
         ],
     );
     let worktree_root = render_template(
-        &context.config.launch_agent.worktree_root_template,
+        worktree_template,
         &[
             ("HOME", home.as_str()),
             ("REPO", repo_name.as_str()),
             ("ISSUE_NUMBER", issue_number_str.as_str()),
-            ("BRANCH", analysis_branch.as_str()),
+            ("BRANCH", branch.as_str()),
         ],
     );
-    let analysis_artifacts_dir = render_template(
-        &context.config.launch_agent.analysis_artifacts_dir_template,
+    let artifacts_dir = render_template(
+        artifacts_template,
         &[
             ("HOME", home.as_str()),
             ("REPO", repo_name.as_str()),
             ("ISSUE_NUMBER", issue_number_str.as_str()),
-            ("BRANCH", analysis_branch.as_str()),
+            ("BRANCH", branch.as_str()),
         ],
     );
 
     Ok(LaunchAgentContext {
         issue_number,
         repo_name,
-        analysis_branch,
+        stage,
+        branch,
         worktree_root,
-        analysis_artifacts_dir,
+        artifacts_dir,
     })
 }
 
@@ -618,6 +720,7 @@ fn shell_quote(value: &str) -> String {
 #[cfg(test)]
 mod launch_agent_tests {
     use super::LaunchAgentContext;
+    use crate::domain::FlowStage;
     use crate::templates::render_template;
 
     #[test]
@@ -639,16 +742,17 @@ mod launch_agent_tests {
         let context = LaunchAgentContext {
             issue_number: 42,
             repo_name: "teamlead".into(),
-            analysis_branch: branch,
+            stage: FlowStage::Analysis,
+            branch,
             worktree_root: worktree,
-            analysis_artifacts_dir: artifacts,
+            artifacts_dir: artifacts,
         };
 
-        assert_eq!(context.analysis_branch, "analysis/issue-42");
+        assert_eq!(context.branch, "analysis/issue-42");
         assert_eq!(
             context.worktree_root,
             "/home/danil/worktrees/teamlead/analysis/issue-42"
         );
-        assert_eq!(context.analysis_artifacts_dir, "specs/issues/42");
+        assert_eq!(context.artifacts_dir, "specs/issues/42");
     }
 }

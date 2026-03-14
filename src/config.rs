@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub github: GithubConfig,
     pub issue_analysis_flow: IssueAnalysisFlowConfig,
+    pub issue_implementation_flow: IssueImplementationFlowConfig,
     pub runtime: RuntimeConfig,
     pub zellij: ZellijConfig,
     pub launch_agent: LaunchAgentConfig,
@@ -84,6 +85,33 @@ impl Config {
             "launch_agent.analysis_artifacts_dir_template must not be empty in {}",
             path.display()
         );
+        anyhow::ensure!(
+            !self
+                .launch_agent
+                .implementation_branch_template
+                .trim()
+                .is_empty(),
+            "launch_agent.implementation_branch_template must not be empty in {}",
+            path.display()
+        );
+        anyhow::ensure!(
+            !self
+                .launch_agent
+                .implementation_worktree_root_template
+                .trim()
+                .is_empty(),
+            "launch_agent.implementation_worktree_root_template must not be empty in {}",
+            path.display()
+        );
+        anyhow::ensure!(
+            !self
+                .launch_agent
+                .implementation_artifacts_dir_template
+                .trim()
+                .is_empty(),
+            "launch_agent.implementation_artifacts_dir_template must not be empty in {}",
+            path.display()
+        );
         Ok(())
     }
 }
@@ -99,6 +127,11 @@ pub struct IssueAnalysisFlowConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IssueImplementationFlowConfig {
+    pub statuses: ImplementationFlowStatuses,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FlowStatuses {
     pub backlog: String,
     pub analysis_in_progress: String,
@@ -106,6 +139,15 @@ pub struct FlowStatuses {
     pub waiting_for_plan_review: String,
     pub ready_for_implementation: String,
     pub analysis_blocked: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ImplementationFlowStatuses {
+    pub ready_for_implementation: String,
+    pub implementation_in_progress: String,
+    pub waiting_for_ci: String,
+    pub waiting_for_code_review: String,
+    pub implementation_blocked: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -126,6 +168,9 @@ pub struct LaunchAgentConfig {
     pub analysis_branch_template: String,
     pub worktree_root_template: String,
     pub analysis_artifacts_dir_template: String,
+    pub implementation_branch_template: String,
+    pub implementation_worktree_root_template: String,
+    pub implementation_artifacts_dir_template: String,
 }
 
 #[cfg(test)]
@@ -147,6 +192,14 @@ issue_analysis_flow:
     ready_for_implementation: "Ready for Implementation"
     analysis_blocked: "Analysis Blocked"
 
+issue_implementation_flow:
+  statuses:
+    ready_for_implementation: "Ready for Implementation"
+    implementation_in_progress: "Implementation In Progress"
+    waiting_for_ci: "Waiting for CI"
+    waiting_for_code_review: "Waiting for Code Review"
+    implementation_blocked: "Implementation Blocked"
+
 runtime:
   max_parallel: 1
   poll_interval_seconds: 3600
@@ -160,6 +213,9 @@ launch_agent:
   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
   worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+  implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
+  implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+  implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
 "#
     }
 

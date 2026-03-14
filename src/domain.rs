@@ -1,5 +1,6 @@
-use crate::config::FlowStatuses;
+use crate::config::{FlowStatuses, ImplementationFlowStatuses};
 use crate::github::ProjectIssueItem;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IssueCandidate {
@@ -31,6 +32,29 @@ pub fn select_next_backlog_project_item<'a>(
 pub struct RunDecision {
     pub allowed: bool,
     pub reason: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowStage {
+    Analysis,
+    Implementation,
+}
+
+impl FlowStage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Analysis => "analysis",
+            Self::Implementation => "implementation",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunStageDecision {
+    pub allowed: bool,
+    pub reason: &'static str,
+    pub stage: Option<FlowStage>,
 }
 
 pub fn can_run_analysis(status: &str, statuses: &FlowStatuses) -> RunDecision {
@@ -65,6 +89,63 @@ pub fn can_run_analysis(status: &str, statuses: &FlowStatuses) -> RunDecision {
     }
 }
 
+pub fn decide_run_stage(
+    status: &str,
+    analysis_statuses: &FlowStatuses,
+    implementation_statuses: &ImplementationFlowStatuses,
+) -> RunStageDecision {
+    let analysis = can_run_analysis(status, analysis_statuses);
+    if analysis.allowed {
+        return RunStageDecision {
+            allowed: true,
+            reason: analysis.reason,
+            stage: Some(FlowStage::Analysis),
+        };
+    }
+
+    if status == implementation_statuses.ready_for_implementation {
+        return RunStageDecision {
+            allowed: true,
+            reason: "ready_for_implementation may enter implementation stage",
+            stage: Some(FlowStage::Implementation),
+        };
+    }
+    if status == implementation_statuses.implementation_in_progress {
+        return RunStageDecision {
+            allowed: true,
+            reason: "implementation_in_progress may be resumed explicitly by operator",
+            stage: Some(FlowStage::Implementation),
+        };
+    }
+    if status == implementation_statuses.waiting_for_ci {
+        return RunStageDecision {
+            allowed: true,
+            reason: "waiting_for_ci may be reopened explicitly by operator",
+            stage: Some(FlowStage::Implementation),
+        };
+    }
+    if status == implementation_statuses.waiting_for_code_review {
+        return RunStageDecision {
+            allowed: true,
+            reason: "waiting_for_code_review may be reopened explicitly by operator",
+            stage: Some(FlowStage::Implementation),
+        };
+    }
+    if status == implementation_statuses.implementation_blocked {
+        return RunStageDecision {
+            allowed: true,
+            reason: "implementation_blocked may be retried explicitly by operator",
+            stage: Some(FlowStage::Implementation),
+        };
+    }
+
+    RunStageDecision {
+        allowed: false,
+        reason: "status is not a valid run entry point",
+        stage: None,
+    }
+}
+
 pub fn parse_issue_ref(input: &str) -> anyhow::Result<u64> {
     if let Ok(number) = input.parse::<u64>() {
         return Ok(number);
@@ -92,6 +173,16 @@ mod tests {
             waiting_for_plan_review: "Waiting for Plan Review".into(),
             ready_for_implementation: "Ready for Implementation".into(),
             analysis_blocked: "Analysis Blocked".into(),
+        }
+    }
+
+    fn implementation_statuses() -> ImplementationFlowStatuses {
+        ImplementationFlowStatuses {
+            ready_for_implementation: "Ready for Implementation".into(),
+            implementation_in_progress: "Implementation In Progress".into(),
+            waiting_for_ci: "Waiting for CI".into(),
+            waiting_for_code_review: "Waiting for Code Review".into(),
+            implementation_blocked: "Implementation Blocked".into(),
         }
     }
 
@@ -132,6 +223,24 @@ mod tests {
     fn analysis_blocked_allows_explicit_retry() {
         let allowed = can_run_analysis("Analysis Blocked", &statuses());
         assert!(allowed.allowed);
+    }
+
+    #[test]
+    fn ready_for_implementation_dispatches_to_implementation_stage() {
+        let decision = decide_run_stage(
+            "Ready for Implementation",
+            &statuses(),
+            &implementation_statuses(),
+        );
+        assert!(decision.allowed);
+        assert_eq!(decision.stage, Some(FlowStage::Implementation));
+    }
+
+    #[test]
+    fn backlog_dispatches_to_analysis_stage() {
+        let decision = decide_run_stage("Backlog", &statuses(), &implementation_statuses());
+        assert!(decision.allowed);
+        assert_eq!(decision.stage, Some(FlowStage::Analysis));
     }
 
     #[test]

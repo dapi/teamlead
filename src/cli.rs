@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 
+use crate::domain::FlowStage;
+
 #[derive(Debug, Parser)]
 #[command(name = "ai-teamlead")]
 #[command(about = "Repo-local AI team lead CLI")]
@@ -46,6 +48,8 @@ pub enum InternalCommand {
     },
     CompleteStage {
         session_uuid: String,
+        #[arg(long, value_enum, default_value = "analysis")]
+        stage: FlowStage,
         #[arg(long, value_enum)]
         outcome: crate::complete_stage::StageOutcome,
         #[arg(long)]

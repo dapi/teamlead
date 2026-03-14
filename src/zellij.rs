@@ -9,6 +9,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde_json::Value;
 
 use crate::config::ZellijConfig;
+use crate::domain::FlowStage;
 use crate::repo::RepoContext;
 use crate::runtime::RuntimeLayout;
 use crate::shell::Shell;
@@ -26,12 +27,13 @@ impl<'a> ZellijLauncher<'a> {
         Self { shell }
     }
 
-    pub fn launch_issue_analysis(
+    pub fn launch_issue_stage(
         &self,
         repo: &RepoContext,
         repo_root: &Path,
         runtime: &RuntimeLayout,
         zellij: &ZellijConfig,
+        stage: FlowStage,
         issue_url: &str,
         session_uuid: &str,
         binary_path: &Path,
@@ -63,6 +65,7 @@ impl<'a> ZellijLauncher<'a> {
         let quoted_issue_url = shell_single_quote(issue_url);
         let quoted_binary = shell_single_quote(binary_path.to_string_lossy().as_ref());
         let quoted_launch_log = shell_single_quote(launch_log_path.to_string_lossy().as_ref());
+        let quoted_stage = shell_single_quote(stage.as_str());
         let debug_flag = if debug { "1" } else { "0" };
 
         let entrypoint = format!(
@@ -72,8 +75,9 @@ cd {quoted_repo_root}\n\
 export AI_TEAMLEAD_BIN={quoted_binary}\n\
 export AI_TEAMLEAD_DEBUG={debug_flag}\n\
 export AI_TEAMLEAD_LAUNCH_LOG={quoted_launch_log}\n\
+export AI_TEAMLEAD_FLOW_STAGE={quoted_stage}\n\
 mkdir -p \"$(dirname \"$AI_TEAMLEAD_LAUNCH_LOG\")\"\n\
-printf '[%s] pane-entrypoint: session_uuid=%s issue_url=%s debug=%s\\n' \"$(date -Iseconds)\" {quoted_session_uuid} {quoted_issue_url} \"$AI_TEAMLEAD_DEBUG\" >>\"$AI_TEAMLEAD_LAUNCH_LOG\"\n\
+printf '[%s] pane-entrypoint: stage=%s session_uuid=%s issue_url=%s debug=%s\\n' \"$(date -Iseconds)\" \"$AI_TEAMLEAD_FLOW_STAGE\" {quoted_session_uuid} {quoted_issue_url} \"$AI_TEAMLEAD_DEBUG\" >>\"$AI_TEAMLEAD_LAUNCH_LOG\"\n\
 exec {quoted_launch_agent} {quoted_session_uuid} {quoted_issue_url}\n"
         );
         fs::write(&entrypoint_path, entrypoint)
@@ -560,6 +564,7 @@ mod tests {
         ZellijLauncher, render_analysis_tab_layout, resolve_tab_id, resolve_tab_id_from_panes,
     };
     use crate::config::ZellijConfig;
+    use crate::domain::FlowStage;
     use crate::repo::RepoContext;
     use crate::runtime::RuntimeLayout;
     use crate::shell::Shell;
@@ -744,11 +749,12 @@ mod tests {
         };
 
         launcher
-            .launch_issue_analysis(
+            .launch_issue_stage(
                 &repo,
                 &repo_root,
                 &runtime,
                 &zellij,
+                FlowStage::Analysis,
                 "https://github.com/dapi/teamlead/issues/42",
                 "session-uuid",
                 Path::new("/tmp/ai-teamlead"),
@@ -828,11 +834,12 @@ mod tests {
         };
 
         launcher
-            .launch_issue_analysis(
+            .launch_issue_stage(
                 &repo,
                 &repo_root,
                 &runtime,
                 &zellij,
+                FlowStage::Analysis,
                 "https://github.com/dapi/teamlead/issues/42",
                 "session-uuid",
                 Path::new("/tmp/ai-teamlead"),
@@ -900,11 +907,12 @@ mod tests {
         };
 
         launcher
-            .launch_issue_analysis(
+            .launch_issue_stage(
                 &repo,
                 &repo_root,
                 &runtime,
                 &zellij,
+                FlowStage::Analysis,
                 "https://github.com/dapi/teamlead/issues/42",
                 "session-uuid",
                 Path::new("/tmp/ai-teamlead"),
@@ -989,11 +997,12 @@ mod tests {
         };
 
         let error = launcher
-            .launch_issue_analysis(
+            .launch_issue_stage(
                 &repo,
                 &repo_root,
                 &runtime,
                 &zellij,
+                FlowStage::Analysis,
                 "https://github.com/dapi/teamlead/issues/42",
                 "session-uuid",
                 Path::new("/tmp/ai-teamlead"),
@@ -1044,11 +1053,12 @@ mod tests {
         };
 
         launcher
-            .launch_issue_analysis(
+            .launch_issue_stage(
                 &repo,
                 &repo_root,
                 &runtime,
                 &zellij,
+                FlowStage::Analysis,
                 "https://github.com/dapi/teamlead/issues/42",
                 "session-uuid",
                 Path::new("/tmp/ai-teamlead"),
@@ -1103,11 +1113,12 @@ mod tests {
         };
 
         launcher
-            .launch_issue_analysis(
+            .launch_issue_stage(
                 &repo,
                 &repo_root,
                 &runtime,
                 &zellij,
+                FlowStage::Analysis,
                 "https://github.com/dapi/teamlead/issues/42",
                 "session-uuid",
                 Path::new("/tmp/ai-teamlead"),
@@ -1155,11 +1166,12 @@ mod tests {
         };
 
         let error = launcher
-            .launch_issue_analysis(
+            .launch_issue_stage(
                 &repo,
                 &repo_root,
                 &runtime,
                 &zellij,
+                FlowStage::Analysis,
                 "https://github.com/dapi/teamlead/issues/42",
                 "session-uuid",
                 Path::new("/tmp/ai-teamlead"),

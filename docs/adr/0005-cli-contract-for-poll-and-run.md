@@ -1,7 +1,12 @@
 # ADR-0005: CLI-контракт команд `poll` и `run`
 
-Статус: accepted
+Статус: superseded by ADR-0021
 Дата: 2026-03-13
+
+Этот ADR фиксировал минимальный CLI-контракт раннего MVP.
+
+Текущий канонический CLI-контракт `poll` / `run` / `loop` описан в
+[ADR-0021](./0021-cli-contract-poll-run-loop.md).
 
 ## Контекст
 

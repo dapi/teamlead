@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub github: GithubConfig,
     pub issue_analysis_flow: IssueAnalysisFlowConfig,
+    #[serde(default)]
+    pub issue_implementation_flow: IssueImplementationFlowConfig,
     pub runtime: RuntimeConfig,
     pub zellij: ZellijConfig,
     pub launch_agent: LaunchAgentConfig,
@@ -84,6 +86,33 @@ impl Config {
             "launch_agent.analysis_artifacts_dir_template must not be empty in {}",
             path.display()
         );
+        anyhow::ensure!(
+            !self
+                .launch_agent
+                .implementation_branch_template
+                .trim()
+                .is_empty(),
+            "launch_agent.implementation_branch_template must not be empty in {}",
+            path.display()
+        );
+        anyhow::ensure!(
+            !self
+                .launch_agent
+                .implementation_worktree_root_template
+                .trim()
+                .is_empty(),
+            "launch_agent.implementation_worktree_root_template must not be empty in {}",
+            path.display()
+        );
+        anyhow::ensure!(
+            !self
+                .launch_agent
+                .implementation_artifacts_dir_template
+                .trim()
+                .is_empty(),
+            "launch_agent.implementation_artifacts_dir_template must not be empty in {}",
+            path.display()
+        );
         Ok(())
     }
 }
@@ -99,6 +128,19 @@ pub struct IssueAnalysisFlowConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IssueImplementationFlowConfig {
+    pub statuses: ImplementationFlowStatuses,
+}
+
+impl Default for IssueImplementationFlowConfig {
+    fn default() -> Self {
+        Self {
+            statuses: ImplementationFlowStatuses::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FlowStatuses {
     pub backlog: String,
     pub analysis_in_progress: String,
@@ -106,6 +148,27 @@ pub struct FlowStatuses {
     pub waiting_for_plan_review: String,
     pub ready_for_implementation: String,
     pub analysis_blocked: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ImplementationFlowStatuses {
+    pub ready_for_implementation: String,
+    pub implementation_in_progress: String,
+    pub waiting_for_ci: String,
+    pub waiting_for_code_review: String,
+    pub implementation_blocked: String,
+}
+
+impl Default for ImplementationFlowStatuses {
+    fn default() -> Self {
+        Self {
+            ready_for_implementation: "Ready for Implementation".into(),
+            implementation_in_progress: "Implementation In Progress".into(),
+            waiting_for_ci: "Waiting for CI".into(),
+            waiting_for_code_review: "Waiting for Code Review".into(),
+            implementation_blocked: "Implementation Blocked".into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -126,6 +189,24 @@ pub struct LaunchAgentConfig {
     pub analysis_branch_template: String,
     pub worktree_root_template: String,
     pub analysis_artifacts_dir_template: String,
+    #[serde(default = "default_implementation_branch_template")]
+    pub implementation_branch_template: String,
+    #[serde(default = "default_implementation_worktree_root_template")]
+    pub implementation_worktree_root_template: String,
+    #[serde(default = "default_implementation_artifacts_dir_template")]
+    pub implementation_artifacts_dir_template: String,
+}
+
+fn default_implementation_branch_template() -> String {
+    "implementation/issue-${ISSUE_NUMBER}".into()
+}
+
+fn default_implementation_worktree_root_template() -> String {
+    "${HOME}/worktrees/${REPO}/${BRANCH}".into()
+}
+
+fn default_implementation_artifacts_dir_template() -> String {
+    "specs/issues/${ISSUE_NUMBER}".into()
 }
 
 #[cfg(test)]
@@ -147,6 +228,14 @@ issue_analysis_flow:
     ready_for_implementation: "Ready for Implementation"
     analysis_blocked: "Analysis Blocked"
 
+issue_implementation_flow:
+  statuses:
+    ready_for_implementation: "Ready for Implementation"
+    implementation_in_progress: "Implementation In Progress"
+    waiting_for_ci: "Waiting for CI"
+    waiting_for_code_review: "Waiting for Code Review"
+    implementation_blocked: "Implementation Blocked"
+
 runtime:
   max_parallel: 1
   poll_interval_seconds: 3600
@@ -160,6 +249,9 @@ launch_agent:
   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
   worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+  implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
+  implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+  implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
 "#
     }
 
@@ -185,6 +277,49 @@ launch_agent:
         let config: Config = serde_yaml::from_str(&yaml).expect("yaml should parse");
         let error = config.validate(&path).expect_err("validation should fail");
         assert!(error.to_string().contains("poll_interval_seconds"));
+    }
+
+    #[test]
+    fn parses_legacy_config_without_implementation_fields() {
+        let yaml = r#"
+github:
+  project_id: "PVT_kwHNeaPOAUaljg"
+
+issue_analysis_flow:
+  statuses:
+    backlog: "Backlog"
+    analysis_in_progress: "Analysis In Progress"
+    waiting_for_clarification: "Waiting for Clarification"
+    waiting_for_plan_review: "Waiting for Plan Review"
+    ready_for_implementation: "Ready for Implementation"
+    analysis_blocked: "Analysis Blocked"
+
+runtime:
+  max_parallel: 1
+  poll_interval_seconds: 3600
+
+zellij:
+  session_name: "ai-teamlead"
+  tab_name: "issue-analysis"
+
+launch_agent:
+  analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
+  worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+  analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+"#;
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        let config: Config = serde_yaml::from_str(yaml).expect("yaml should parse");
+        config
+            .validate(&path)
+            .expect("legacy config should validate");
+        assert_eq!(
+            config.issue_implementation_flow.statuses.waiting_for_ci,
+            "Waiting for CI"
+        );
+        assert_eq!(
+            config.launch_agent.implementation_branch_template,
+            "implementation/issue-${ISSUE_NUMBER}"
+        );
     }
 
     #[test]

@@ -31,7 +31,7 @@ if ! wait_for_file "$ISSUE_INDEX"; then
     return 0
 fi
 
-SESSION_UUID="$(jq -r '.session_uuid' "$ISSUE_INDEX")"
+SESSION_UUID="$(issue_session_uuid "$ISSUE_INDEX")"
 SESSION_MANIFEST="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/session.json"
 if ! wait_for_file "$SESSION_MANIFEST"; then
     echo "  FAIL: poll created session manifest"

@@ -19,7 +19,7 @@ if ! wait_for_file "$ISSUE_INDEX"; then
 fi
 assert_file_exists "$ISSUE_INDEX" "issue index file created"
 
-SESSION_UUID="$(jq -r '.session_uuid' "$ISSUE_INDEX")"
+SESSION_UUID="$(issue_session_uuid "$ISSUE_INDEX")"
 SESSION_MANIFEST="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/session.json"
 LAYOUT_FILE="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/launch-layout.kdl"
 HELPER_LOG="$REPO_ROOT/.git/.ai-teamlead/launch-helper.log"

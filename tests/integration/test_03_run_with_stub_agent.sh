@@ -31,7 +31,7 @@ if ! wait_for_file "$ISSUE_INDEX"; then
     return 0
 fi
 
-SESSION_UUID="$(jq -r '.session_uuid' "$ISSUE_INDEX")"
+SESSION_UUID="$(issue_session_uuid "$ISSUE_INDEX")"
 SESSION_MANIFEST="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/session.json"
 LAUNCH_LOG="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/launch.log"
 if ! wait_for_file "$SESSION_MANIFEST"; then
@@ -63,7 +63,7 @@ assert_eq "$(cat "$STUB_OUT/analysis_artifacts_dir")" "specs/issues/42" "run pas
 assert_eq "$(cat "$STUB_OUT/codex.cwd")" "$WORKTREE_ROOT" "stub agent started in analysis worktree"
 assert_eq "$SESSION_NAME" "example" "run uses rendered settings zellij session outside zellij env"
 assert_ne "$PANE_ID" "" "run captured zellij pane id"
-assert_file_contains "$LAUNCH_LOG" "pane-entrypoint: session_uuid=$SESSION_UUID" "run wrote pane entrypoint bootstrap log"
+assert_file_contains "$LAUNCH_LOG" "pane-entrypoint: stage=analysis session_uuid=$SESSION_UUID" "run wrote pane entrypoint bootstrap log"
 assert_file_contains "$LAUNCH_LOG" "launch-agent: starting agent in $WORKTREE_ROOT" "run wrote launch-agent progress log"
 assert_file_contains "$STUB_OUT/prompt.txt" "# issue-analysis-flow" "run injected issue-analysis flow into prompt"
 assert_file_contains "$STUB_OUT/prompt.txt" "Issue URL: https://github.com/dapi/example/issues/42" "run injected issue URL into prompt"

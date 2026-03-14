@@ -12,7 +12,7 @@
 - foreground loop `loop`
 - GitHub adapter на базе `gh` CLI для чтения и изменения состояния issue в
   Project
-- dispatcher запуска flow
+- stage-aware dispatcher запуска flow
 - launcher интеграции с `zellij`
 
 ## Данные и состояния
@@ -22,7 +22,7 @@
 - repo context текущего git-репозитория
 - конфиг `./.ai-teamlead/settings.yml`
 - GitHub Project id
-- mapping статусных имен для `issue-analysis-flow`
+- mapping статусных имен для analysis и implementation flow
 
 Ключевые состояния:
 
@@ -30,7 +30,8 @@
 - `poll` не нашел подходящей issue, завершился
 - `poll` нашел подходящую issue
 - `run` проверил допустимость входа
-- issue переведена в `Analysis In Progress`
+- issue stage определен по текущему project status
+- issue переведена в `Analysis In Progress` или `Implementation In Progress`
 - issue связана с `session_uuid`
 - flow запущен
 - `poll` завершился
@@ -60,7 +61,7 @@
 Уже принятые решения:
 
 - repo-local конфиг `./.ai-teamlead/settings.yml`
-- versioned project-local flow в `./.ai-teamlead/flows/issue-analysis-flow.md`
+- versioned project-local flow-документы для analysis и implementation stage
 - foreground CLI-утилита с командами `init`, `poll`, `run`, `loop`
 - `loop` является foreground-оберткой над `poll`, а не отдельным daemon model
 - язык реализации MVP: Rust
@@ -68,6 +69,8 @@
 - `max_parallel: 1` для MVP
 - repo-local runtime-артефакты в `.git/.ai-teamlead/`
 - минимальный CLI-контракт состоит из команд `poll`, `run`, `loop`
+- `run` остается единым issue-level entrypoint и dispatch-ит analysis или
+  implementation flow по текущему status issue
 - базовый GitHub integration layer строится на `gh` CLI
 - GitHub owner/repo жестко берутся из текущего git-репозитория
 - каждая issue в анализе имеет связанную агентскую сессию с `session_uuid`
@@ -97,6 +100,14 @@ issue_analysis_flow:
     waiting_for_plan_review: "Waiting for Plan Review"
     ready_for_implementation: "Ready for Implementation"
     analysis_blocked: "Analysis Blocked"
+
+issue_implementation_flow:
+  statuses:
+    ready_for_implementation: "Ready for Implementation"
+    implementation_in_progress: "Implementation In Progress"
+    waiting_for_ci: "Waiting for CI"
+    waiting_for_code_review: "Waiting for Code Review"
+    implementation_blocked: "Implementation Blocked"
 
 runtime:
   max_parallel: 1
@@ -156,7 +167,7 @@ Repo-local runtime-артефакты хранятся в:
 
 ## CLI-контракт
 
-Для MVP фиксируются ручные команды `poll`, `run`, `loop`.
+Для MVP и следующего stage фиксируются ручные команды `poll`, `run`, `loop`.
 
 ### `poll`
 
@@ -190,9 +201,10 @@ Repo-local runtime-артефакты хранятся в:
 - команда использует те же правила допустимых статусов, что и SSOT
 - команда не должна обходить правила transition model
 - команда является каноническим issue-level entrypoint
+- команда является stage-aware dispatcher между analysis и implementation flow
 - команда отвечает за claim, re-entry, `session_uuid` и launcher orchestration
 - команда запускает или восстанавливает launcher path в stable launch context
-- в запуск агента передается project-local `issue-analysis-flow`
+- в запуск агента передается stage-specific project-local flow
 - в запуск агента передается URL GitHub issue
 - `poll` после выбора issue использует тот же `run`-path
 
@@ -235,7 +247,7 @@ Repo-local runtime-артефакты хранятся в:
   `./.ai-teamlead/launch-agent.sh` в новой pane
 - `launch-agent.sh` должен запускаться из корня репозитория как `cwd`
 - сам `launch-agent.sh` вызывает внутреннюю команду `bind-zellij-pane`,
-  готовит analysis worktree и после этого стартует настроенного агента
-  (`codex` или `claude`) с project-local `issue-analysis-flow` и URL issue
+  готовит stage-specific worktree и после этого стартует настроенного агента
+  (`codex` или `claude`) со stage-specific project-local flow и URL issue
 - минимальный launcher input для агента:
-  `./.ai-teamlead/flows/issue-analysis-flow.md`, URL GitHub issue, `session_uuid`
+  path к stage-specific flow entrypoint, URL GitHub issue, `session_uuid`

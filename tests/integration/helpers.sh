@@ -137,6 +137,7 @@ wait_for_json_field_not_value() {
 create_test_repo() {
     local repo_root="$1"
     mkdir -p "$repo_root/.ai-teamlead"
+    mkdir -p "$repo_root/.ai-teamlead/zellij"
     git init -q "$repo_root"
     git -C "$repo_root" remote add origin git@github.com:dapi/teamlead.git
     cat > "$repo_root/.ai-teamlead/settings.yml" <<'EOF'
@@ -187,6 +188,15 @@ printf 'started\n' >"$MARKER_FILE"
 exec "${SHELL:-/bin/bash}" -l
 EOF
     chmod +x "$repo_root/.ai-teamlead/launch-agent.sh"
+    cat > "$repo_root/.ai-teamlead/zellij/analysis-tab.kdl" <<'EOF'
+layout {
+  tab name="${TAB_NAME}" {
+    pane command="bash" {
+      args "${PANE_ENTRYPOINT}"
+    }
+  }
+}
+EOF
     mkdir -p "$repo_root/.ai-teamlead/flows"
     cat > "$repo_root/.ai-teamlead/flows/issue-analysis-flow.md" <<'EOF'
 # issue-analysis-flow fixture

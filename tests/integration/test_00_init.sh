@@ -16,6 +16,7 @@ SETTINGS_FILE="$REPO_ROOT/.ai-teamlead/settings.yml"
 README_FILE="$REPO_ROOT/.ai-teamlead/README.md"
 PROJECT_INIT_FILE="$REPO_ROOT/.ai-teamlead/init.sh"
 LAUNCH_AGENT_FILE="$REPO_ROOT/.ai-teamlead/launch-agent.sh"
+ANALYSIS_TAB_TEMPLATE_FILE="$REPO_ROOT/.ai-teamlead/zellij/analysis-tab.kdl"
 FLOW_FILE="$REPO_ROOT/.ai-teamlead/flows/issue-analysis-flow.md"
 FLOW_README_FILE="$REPO_ROOT/.ai-teamlead/flows/issue-analysis/README.md"
 FLOW_WHAT_FILE="$REPO_ROOT/.ai-teamlead/flows/issue-analysis/01-what-we-build.md"
@@ -30,6 +31,7 @@ assert_file_exists "$SETTINGS_FILE" "init created settings.yml"
 assert_file_exists "$README_FILE" "init created .ai-teamlead README"
 assert_file_exists "$PROJECT_INIT_FILE" "init created project-local init.sh"
 assert_file_exists "$LAUNCH_AGENT_FILE" "init created project-local launch-agent.sh"
+assert_file_exists "$ANALYSIS_TAB_TEMPLATE_FILE" "init created analysis tab template"
 assert_file_exists "$FLOW_FILE" "init created issue-analysis-flow.md"
 assert_file_exists "$FLOW_README_FILE" "init created issue-analysis staged README"
 assert_file_exists "$FLOW_WHAT_FILE" "init created issue-analysis stage 1"
@@ -55,7 +57,7 @@ else
     ((PASS++)) || true
 fi
 
-if [[ "$OUTPUT" == *"created: $SETTINGS_FILE"* ]] && [[ "$OUTPUT" == *"created: $README_FILE"* ]] && [[ "$OUTPUT" == *"created: $PROJECT_INIT_FILE"* ]] && [[ "$OUTPUT" == *"created: $LAUNCH_AGENT_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_README_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_WHAT_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_HOW_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_VERIFY_FILE"* ]] && [[ "$OUTPUT" == *"created: $CLAUDE_README_FILE"* ]] && [[ "$OUTPUT" == *"created: $CODEX_README_FILE"* ]] && [[ "$OUTPUT" == *"created: $ROOT_INIT_LINK"* ]]; then
+if [[ "$OUTPUT" == *"created: $SETTINGS_FILE"* ]] && [[ "$OUTPUT" == *"created: $README_FILE"* ]] && [[ "$OUTPUT" == *"created: $PROJECT_INIT_FILE"* ]] && [[ "$OUTPUT" == *"created: $LAUNCH_AGENT_FILE"* ]] && [[ "$OUTPUT" == *"created: $ANALYSIS_TAB_TEMPLATE_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_README_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_WHAT_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_HOW_FILE"* ]] && [[ "$OUTPUT" == *"created: $FLOW_VERIFY_FILE"* ]] && [[ "$OUTPUT" == *"created: $CLAUDE_README_FILE"* ]] && [[ "$OUTPUT" == *"created: $CODEX_README_FILE"* ]] && [[ "$OUTPUT" == *"created: $ROOT_INIT_LINK"* ]]; then
     echo "  PASS: init reports created files"
     ((PASS++)) || true
 else
@@ -68,7 +70,7 @@ SECOND_OUTPUT="$(
     "$AI_TEAMLEAD_BIN" init
 )"
 
-if [[ "$SECOND_OUTPUT" == *"skipped: $SETTINGS_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $PROJECT_INIT_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $LAUNCH_AGENT_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_WHAT_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_HOW_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_VERIFY_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $CLAUDE_README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $CODEX_README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $ROOT_INIT_LINK"* ]]; then
+if [[ "$SECOND_OUTPUT" == *"skipped: $SETTINGS_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $PROJECT_INIT_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $LAUNCH_AGENT_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $ANALYSIS_TAB_TEMPLATE_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_WHAT_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_HOW_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $FLOW_VERIFY_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $CLAUDE_README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $CODEX_README_FILE"* ]] && [[ "$SECOND_OUTPUT" == *"skipped: $ROOT_INIT_LINK"* ]]; then
     echo "  PASS: init is idempotent"
     ((PASS++)) || true
 else

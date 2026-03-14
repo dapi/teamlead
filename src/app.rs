@@ -8,11 +8,11 @@ use clap::Parser;
 use crate::cli::{Cli, Command, InternalCommand};
 use crate::config::Config;
 use crate::domain::{can_run_analysis, parse_issue_ref, select_next_backlog_project_item};
-use crate::github::GhProjectClient;
+use crate::github::{GhProjectClient, ProjectIssueItem, ProjectSnapshot};
 use crate::init::init_project_files;
 use crate::project_files::ProjectPaths;
 use crate::repo::RepoContext;
-use crate::runtime::RuntimeLayout;
+use crate::runtime::{RuntimeLayout, SessionManifest};
 use crate::shell::{Shell, SystemShell};
 use crate::templates::{render_template, render_zellij_session_name};
 use crate::zellij::{ZellijLauncher, capture_current_binding};
@@ -24,6 +24,7 @@ pub fn run() -> Result<()> {
     match cli.command {
         Command::Init => run_init(&shell),
         Command::Poll { zellij_session } => run_poll(&shell, zellij_session.as_deref()),
+        Command::Loop { zellij_session } => run_loop(&shell, zellij_session.as_deref()),
         Command::Run {
             issue,
             debug,
@@ -59,6 +60,92 @@ fn run_poll(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
     let context = load_execution_context(shell, zellij_session_override)?;
     let github = GhProjectClient::new(shell);
     let zellij = ZellijLauncher::new(shell);
+    match run_poll_cycle(&context, &github, &zellij)? {
+        PollCycleOutcome::NoEligibleIssue { project_title } => {
+            println!(
+                "poll: no eligible backlog issues for repo={}/{} in project={}",
+                context.repo.github_owner, context.repo.github_repo, project_title
+            );
+        }
+        PollCycleOutcome::Launched(launch) => {
+            println!(
+                "poll: claimed issue #{} -> {} session_uuid={}",
+                launch.issue_number,
+                context
+                    .config
+                    .issue_analysis_flow
+                    .statuses
+                    .analysis_in_progress,
+                launch.session_uuid
+            );
+            print_zellij_launch_target(
+                &context.runtime,
+                &launch.session_uuid,
+                &context.config.zellij,
+            );
+        }
+    }
+    Ok(())
+}
+
+fn run_loop(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<()> {
+    let context = load_execution_context(shell, zellij_session_override)?;
+    let github = GhProjectClient::new(shell);
+    let zellij = ZellijLauncher::new(shell);
+    let interval = Duration::from_secs(context.config.runtime.poll_interval_seconds);
+    let mut cycle_number = 1_u64;
+
+    loop {
+        println!("loop: cycle={cycle_number} started");
+        match run_poll_cycle(&context, &github, &zellij) {
+            Ok(PollCycleOutcome::NoEligibleIssue { project_title }) => {
+                println!(
+                    "loop: cycle={cycle_number} no eligible backlog issues in project={}",
+                    project_title
+                );
+            }
+            Ok(PollCycleOutcome::Launched(launch)) => {
+                println!(
+                    "loop: cycle={cycle_number} launched issue #{} session_uuid={}",
+                    launch.issue_number, launch.session_uuid
+                );
+                print_zellij_launch_target(
+                    &context.runtime,
+                    &launch.session_uuid,
+                    &context.config.zellij,
+                );
+            }
+            Err(error) => {
+                eprintln!("loop: cycle={cycle_number} failed: {error:#}");
+            }
+        }
+
+        println!(
+            "loop: cycle={cycle_number} sleeping {}s",
+            interval.as_secs()
+        );
+        thread::sleep(interval);
+        cycle_number += 1;
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PollCycleOutcome {
+    NoEligibleIssue { project_title: String },
+    Launched(LaunchOutcome),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LaunchOutcome {
+    issue_number: u64,
+    session_uuid: String,
+}
+
+fn run_poll_cycle(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+    zellij: &ZellijLauncher<'_>,
+) -> Result<PollCycleOutcome> {
     let snapshot =
         github.load_project_snapshot(&context.repo.repo_root, &context.config.github.project_id)?;
     let Some(issue) = select_next_backlog_project_item(
@@ -67,82 +154,13 @@ fn run_poll(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
         &context.repo.github_owner,
         &context.repo.github_repo,
     ) else {
-        println!(
-            "poll: no eligible backlog issues for repo={}/{} in project={}",
-            context.repo.github_owner, context.repo.github_repo, snapshot.title
-        );
-        return Ok(());
+        return Ok(PollCycleOutcome::NoEligibleIssue {
+            project_title: snapshot.title,
+        });
     };
 
-    let in_progress_option_id = snapshot.option_id_by_name(
-        &context
-            .config
-            .issue_analysis_flow
-            .statuses
-            .analysis_in_progress,
-    )?;
-    github.update_status(
-        &context.repo.repo_root,
-        &context.config.github.project_id,
-        &issue.item_id,
-        &snapshot.status_field_id,
-        in_progress_option_id,
-    )?;
-    let manifest = context.runtime.create_claim_binding(
-        &context.repo,
-        &context.config.github.project_id,
-        &context.config.zellij,
-        issue.issue_number,
-    )?;
-    let issue_url = format!(
-        "https://github.com/{}/{}/issues/{}",
-        context.repo.github_owner, context.repo.github_repo, issue.issue_number
-    );
-    let binary_path = std::env::current_exe().context("failed to resolve ai-teamlead binary")?;
-    if let Err(error) = zellij.launch_issue_analysis(
-        &context.repo,
-        &context.repo.repo_root,
-        &context.runtime,
-        &context.config.zellij,
-        &issue_url,
-        &manifest.session_uuid,
-        &binary_path,
-        false,
-    ) {
-        if let Ok(blocked_option_id) = snapshot
-            .option_id_by_name(&context.config.issue_analysis_flow.statuses.analysis_blocked)
-        {
-            let _ = github.update_status(
-                &context.repo.repo_root,
-                &context.config.github.project_id,
-                &issue.item_id,
-                &snapshot.status_field_id,
-                blocked_option_id,
-            );
-            let _ = context.runtime.update_issue_flow_status(
-                issue.issue_number,
-                &context.config.issue_analysis_flow.statuses.analysis_blocked,
-            );
-        }
-        return Err(error).context("failed to launch zellij issue-analysis session");
-    }
-
-    println!(
-        "poll: claimed issue #{} -> {} session_uuid={}",
-        issue.issue_number,
-        context
-            .config
-            .issue_analysis_flow
-            .statuses
-            .analysis_in_progress,
-        manifest.session_uuid
-    );
-    print_zellij_launch_target(
-        &context.runtime,
-        &manifest.session_uuid,
-        &context.config.zellij,
-    );
-    Ok(())
+    let launch = run_issue_entrypoint(context, github, zellij, &snapshot, issue, false)?;
+    Ok(PollCycleOutcome::Launched(launch))
 }
 
 fn run_manual_run(
@@ -168,78 +186,50 @@ fn run_manual_run(
         })
         .ok_or_else(|| anyhow::anyhow!("issue #{issue_number} is not linked to the project"))?;
 
-    let current_status = issue
-        .status_name
-        .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("issue #{issue_number} does not have a project status"))?;
+    let launch = run_issue_entrypoint(&context, &github, &zellij, &snapshot, issue, debug)?;
+    println!(
+        "run: issue=#{} launched in zellij session_uuid={}",
+        launch.issue_number, launch.session_uuid
+    );
+    print_zellij_launch_target(
+        &context.runtime,
+        &launch.session_uuid,
+        &context.config.zellij,
+    );
+    Ok(())
+}
+
+fn run_issue_entrypoint(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+    zellij: &ZellijLauncher<'_>,
+    snapshot: &ProjectSnapshot,
+    issue: &ProjectIssueItem,
+    debug: bool,
+) -> Result<LaunchOutcome> {
+    let current_status = issue.status_name.as_deref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "issue #{} does not have a project status",
+            issue.issue_number
+        )
+    })?;
 
     let allowed = can_run_analysis(current_status, &context.config.issue_analysis_flow.statuses);
     if !allowed.allowed {
-        bail!("run denied for issue #{issue_number}: {}", allowed.reason);
+        bail!(
+            "run denied for issue #{}: {}",
+            issue.issue_number,
+            allowed.reason
+        );
     }
 
-    let issue_index = context.runtime.load_issue_index(issue_number)?;
-    let manifest = if current_status == context.config.issue_analysis_flow.statuses.backlog {
-        github.update_status(
-            &context.repo.repo_root,
-            &context.config.github.project_id,
-            &issue.item_id,
-            &snapshot.status_field_id,
-            snapshot.option_id_by_name(
-                &context
-                    .config
-                    .issue_analysis_flow
-                    .statuses
-                    .analysis_in_progress,
-            )?,
-        )?;
-        context.runtime.create_claim_binding(
-            &context.repo,
-            &context.config.github.project_id,
-            &context.config.zellij,
-            issue_number,
-        )?
-    } else {
-        let issue_index = issue_index.ok_or_else(|| {
-            anyhow::anyhow!("missing issue session index for issue #{issue_number}")
-        })?;
-        let _manifest = context
-            .runtime
-            .load_session_manifest(&issue_index.session_uuid)?
-            .ok_or_else(|| anyhow::anyhow!("missing session manifest for issue #{issue_number}"))?;
-        github.update_status(
-            &context.repo.repo_root,
-            &context.config.github.project_id,
-            &issue.item_id,
-            &snapshot.status_field_id,
-            snapshot.option_id_by_name(
-                &context
-                    .config
-                    .issue_analysis_flow
-                    .statuses
-                    .analysis_in_progress,
-            )?,
-        )?;
-        context.runtime.update_issue_flow_status(
-            issue_number,
-            &context
-                .config
-                .issue_analysis_flow
-                .statuses
-                .analysis_in_progress,
-        )?;
-        context
-            .runtime
-            .load_session_manifest(&issue_index.session_uuid)?
-            .ok_or_else(|| anyhow::anyhow!("missing session manifest for issue #{issue_number}"))?
-    };
-
+    let manifest = prepare_session_manifest(context, github, snapshot, issue, current_status)?;
     let issue_url = format!(
         "https://github.com/{}/{}/issues/{}",
-        context.repo.github_owner, context.repo.github_repo, issue_number
+        context.repo.github_owner, context.repo.github_repo, issue.issue_number
     );
     let binary_path = std::env::current_exe().context("failed to resolve ai-teamlead binary")?;
-    zellij.launch_issue_analysis(
+    if let Err(error) = zellij.launch_issue_analysis(
         &context.repo,
         &context.repo.repo_root,
         &context.runtime,
@@ -248,18 +238,98 @@ fn run_manual_run(
         &manifest.session_uuid,
         &binary_path,
         debug,
-    )?;
+    ) {
+        mark_issue_as_blocked(context, github, snapshot, issue);
+        return Err(error).context("failed to launch zellij issue-analysis session");
+    }
 
-    println!(
-        "run: issue=#{issue_number} relaunched in zellij session_uuid={}",
-        manifest.session_uuid
+    Ok(LaunchOutcome {
+        issue_number: issue.issue_number,
+        session_uuid: manifest.session_uuid,
+    })
+}
+
+fn prepare_session_manifest(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+    snapshot: &ProjectSnapshot,
+    issue: &ProjectIssueItem,
+    current_status: &str,
+) -> Result<SessionManifest> {
+    let analysis_in_progress = &context
+        .config
+        .issue_analysis_flow
+        .statuses
+        .analysis_in_progress;
+
+    if current_status == context.config.issue_analysis_flow.statuses.backlog {
+        github.update_status(
+            &context.repo.repo_root,
+            &context.config.github.project_id,
+            &issue.item_id,
+            &snapshot.status_field_id,
+            snapshot.option_id_by_name(analysis_in_progress)?,
+        )?;
+        return context.runtime.create_claim_binding(
+            &context.repo,
+            &context.config.github.project_id,
+            &context.config.zellij,
+            issue.issue_number,
+        );
+    }
+
+    let issue_index = context
+        .runtime
+        .load_issue_index(issue.issue_number)?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "missing issue session index for issue #{}",
+                issue.issue_number
+            )
+        })?;
+    let manifest = context
+        .runtime
+        .load_session_manifest(&issue_index.session_uuid)?
+        .ok_or_else(|| {
+            anyhow::anyhow!("missing session manifest for issue #{}", issue.issue_number)
+        })?;
+
+    github.update_status(
+        &context.repo.repo_root,
+        &context.config.github.project_id,
+        &issue.item_id,
+        &snapshot.status_field_id,
+        snapshot.option_id_by_name(analysis_in_progress)?,
+    )?;
+    context
+        .runtime
+        .update_issue_flow_status(issue.issue_number, analysis_in_progress)?;
+
+    Ok(manifest)
+}
+
+fn mark_issue_as_blocked(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+    snapshot: &ProjectSnapshot,
+    issue: &ProjectIssueItem,
+) {
+    if let Ok(blocked_option_id) =
+        snapshot.option_id_by_name(&context.config.issue_analysis_flow.statuses.analysis_blocked)
+    {
+        let _ = github.update_status(
+            &context.repo.repo_root,
+            &context.config.github.project_id,
+            &issue.item_id,
+            &snapshot.status_field_id,
+            blocked_option_id,
+        );
+    }
+
+    let _ = context.runtime.update_issue_flow_status(
+        issue.issue_number,
+        &context.config.issue_analysis_flow.statuses.analysis_blocked,
     );
-    print_zellij_launch_target(
-        &context.runtime,
-        &manifest.session_uuid,
-        &context.config.zellij,
-    );
-    Ok(())
 }
 
 fn print_zellij_launch_target(

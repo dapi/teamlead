@@ -15,6 +15,10 @@ pub enum Command {
         #[arg(long = "zellij-session", value_name = "SESSION")]
         zellij_session: Option<String>,
     },
+    Loop {
+        #[arg(long = "zellij-session", value_name = "SESSION")]
+        zellij_session: Option<String>,
+    },
     Run {
         #[arg(short = 'd', long = "debug")]
         debug: bool,

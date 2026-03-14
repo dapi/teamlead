@@ -28,8 +28,7 @@ Feature считается готовой, если:
 - есть хотя бы один стабильный `stub`-сценарий для CI
 - есть хотя бы один локальный `live`-сценарий для реального агента `claude`
 - `claude` / Sonnet зафиксирован как default live path
-- `codex` поддержан как дополнительный live-profile или явно вынесен в
-  follow-up
+- `codex` зафиксирован как дополнительный live-profile первой версии
 - есть как минимум один сценарий, который проверяет invocation log `gh` stub
 - результаты можно воспроизвести повторным запуском на той же машине
 - ошибки preflight, sandbox startup и assertion failure различимы по статусу и
@@ -68,7 +67,6 @@ Feature считается готовой, если:
 
 ### Сценарий 3. `live codex` как дополнительный профиль
 
-- сценарий обязателен только если `codex` включен в scope текущей версии
 - пользователь запускает локальный live-сценарий с `codex`
 - sandbox получает только разрешенные env vars и mounts для `codex`
 - агент стартует внутри sandbox и использует project-local flow
@@ -128,7 +126,7 @@ Feature считается готовой, если:
   `snapshot_prepared`, `sandbox_ready`, `runtime_started`, `agent_running`,
   `asserting`, итоговый verdict
 - stdout/stderr entrypoint-а и launcher-а
-- причину `preflight failed`, `failed` или `errored`
+- причину verdict `preflight failed`, `failed` или `errored`
 
 ## Связанные документы
 

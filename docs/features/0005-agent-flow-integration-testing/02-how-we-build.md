@@ -87,6 +87,7 @@ execution surface.
 - `created`
 - `snapshot_prepared`
 - `sandbox_ready`
+- `preflight_failed`
 - `runtime_started`
 - `agent_running`
 - `asserting`
@@ -95,6 +96,10 @@ execution surface.
 
 Переходы должны быть линейными и диагностируемыми. Повторный запуск создает
 новый `run_id` и не переиспользует mutable state прошлого прогона.
+
+`preflight_failed` фиксирует отдельный класс завершения до старта runtime path:
+например, отсутствующий agent binary, недостающий allowlisted credential или
+нарушение sandbox policy, обнаруженное на этапе подготовки.
 
 ### Workspace snapshot
 

@@ -52,9 +52,6 @@ flow end-to-end.
 
 - нужен ли отдельный CLI namespace `test` или достаточно подкоманды в
   существующем verification path
-- нужен ли `codex` уже в первой версии как дополнительный live-profile или его
-  стоит явно вынести в follow-up после стабилизации default path на
-  `claude` / Sonnet
 - нужно ли отдельно ограничивать budget, timeout и максимальное число LLM
   вызовов на сценарий
 

@@ -97,6 +97,10 @@
 Дополнительные файлы (plan, runtime-artifacts и т.д.) добавляются по
 необходимости.
 
+Если для feature нужен отдельный порядок реализации, добавляй:
+
+- `04-implementation-plan.md` — по правилам `docs/implementation-plan.md`
+
 ## Связанные документы
 
 - SSOT:

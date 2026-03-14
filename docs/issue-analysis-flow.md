@@ -3,7 +3,7 @@
 Статус: draft, evolving
 Владелец: владелец репозитория
 Роль: SSOT для flow анализа issue
-Последнее обновление: 2026-03-13
+Последнее обновление: 2026-03-14
 
 ## Назначение
 
@@ -274,6 +274,9 @@ TUI/CLI-контрола или формализованных action-кнопо
 План должен пройти внутреннее ревью до публикации и не должен содержать
 известных пробелов или противоречий.
 
+Если результат анализа включает `План имплементации`, он должен соответствовать
+требованиям `docs/implementation-plan.md`.
+
 ## Versioned analysis-артефакты
 
 Результат анализа должен быть сохранен как versioned SDD-комплект в каталоге:
@@ -304,6 +307,7 @@ TUI/CLI-контрола или формализованных action-кнопо
 - ссылку на GitHub issue
 - список артефактов по трем осям
 - текущий статус анализа
+- ссылки на документы, которые нужны для понимания итогового плана реализации
 
 `01-what-we-build.md` должен содержать минимум:
 
@@ -336,6 +340,15 @@ TUI/CLI-контрола или формализованных action-кнопо
 
 Они могут быть как отдельными разделами внутри `01-what-we-build.md`, так и
 вынесенными в отдельные связанные документы, если issue этого требует.
+
+Если для issue создается отдельный `План имплементации`, он должен:
+
+- содержать ссылки на все документы, без которых нельзя корректно выполнить
+  задачу
+- связывать этапы реализации с SSOT, ADR, verification-документами и quality
+  bar
+- позволять агенту быстро восстанавливать причинно-следственные связи решений
+  без ручного поиска по репозиторию
 
 ## Правила выбора секций внутри артефактов
 
@@ -664,6 +677,7 @@ Issue должна переводиться в `Analysis Blocked`, если:
 - [docs/adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md](/home/danil/code/teamlead/docs/adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md)
 - [docs/adr/0019-conditional-sections-by-task-type-project-type-and-size.md](/home/danil/code/teamlead/docs/adr/0019-conditional-sections-by-task-type-project-type-and-size.md)
 - [docs/adr/0013-agent-session-history-as-dialog-source.md](/home/danil/code/teamlead/docs/adr/0013-agent-session-history-as-dialog-source.md)
+- [docs/implementation-plan.md](/home/danil/code/teamlead/docs/implementation-plan.md)
 - [docs/features/0001-ai-teamlead-daemon/README.md](/home/danil/code/teamlead/docs/features/0001-ai-teamlead-daemon/README.md)
 
 ## Журнал изменений
@@ -703,3 +717,5 @@ Issue должна переводиться в `Analysis Blocked`, если:
   repo-level documentation structure
 - стандартизированы названия секций `User Story` и `Use Cases`
 - уточнен контракт повторного `run` и degraded mode launcher-а без `codex`
+- добавлено требование к `Плану имплементации` и его обязательным ссылкам на
+  связанные документы

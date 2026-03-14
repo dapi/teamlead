@@ -28,6 +28,8 @@ Options:
 If no paths are provided, the command reviews:
 - README.md
 - docs
+
+Ignored review paths:
 - .ai-teamlead
 EOF
 }
@@ -44,15 +46,54 @@ trim() {
     printf '%s' "$value"
 }
 
+normalize_repo_relative_path() {
+    local path="$1"
+    path="${path#./}"
+    path="${path%/}"
+    if [[ -z "$path" ]]; then
+        path="."
+    fi
+    printf '%s' "$path"
+}
+
+is_ignored_path() {
+    local path=""
+    local ignored=""
+
+    path="$(normalize_repo_relative_path "$1")"
+    for ignored in "${IGNORED_PATHS[@]}"; do
+        if [[ "$path" == "$ignored" || "$path" == "$ignored/"* ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 expand_target_list() {
     local target=""
     local -a expanded=()
+    local normalized_target=""
 
     for target in "$@"; do
+        normalized_target="$(normalize_repo_relative_path "$target")"
+
+        if is_ignored_path "$normalized_target"; then
+            printf 'review-docs.sh: ignoring path from review scope: %s\n' "$target" >&2
+            continue
+        fi
+
         if [[ -d "$target" ]]; then
             while IFS= read -r file; do
+                if is_ignored_path "$file"; then
+                    continue
+                fi
                 expanded+=("$file")
-            done < <(find "$target" -type f | sort)
+            done < <(
+                find "$target" \
+                    \( -path '*/.ai-teamlead' -o -path '*/.ai-teamlead/*' \) -prune \
+                    -o -type f -print | sort
+            )
         else
             expanded+=("$target")
         fi
@@ -220,8 +261,9 @@ declare -a GOVERNANCE_PATHS=()
 declare -a REPORT_FILES=()
 declare -a PIDS=()
 declare -a PID_ASPECTS=()
+declare -a IGNORED_PATHS=(".ai-teamlead")
 
-declare -a DEFAULT_TARGETS=("README.md" "docs" ".ai-teamlead")
+declare -a DEFAULT_TARGETS=("README.md" "docs")
 declare -a DEFAULT_ASPECTS=("gaps" "completeness" "contradictions" "consistency")
 
 MODEL=""

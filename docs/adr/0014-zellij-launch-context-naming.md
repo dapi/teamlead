@@ -23,7 +23,7 @@
 
 Bootstrap-правило для `session_name`:
 
-- по умолчанию `session_name` формируется как `{repo_name}-ai-teamlead`
+- по умолчанию `session_name` хранится как template `${REPO}`
 
 Bootstrap-правило для `tab_name`:
 
@@ -31,7 +31,9 @@ Bootstrap-правило для `tab_name`:
 
 Где:
 
-- `repo_name` это имя текущего git-репозитория
+- `${REPO}` рендерится во время запуска из canonical GitHub repo slug,
+  полученного из `origin`
+- literal-значения `session_name` без placeholder остаются допустимыми
 
 Runtime `zellij` identifiers не хранятся в versioned config:
 
@@ -48,12 +50,14 @@ Runtime `zellij` identifiers не хранятся в versioned config:
 - bootstrap дает предсказуемый launcher context для каждого репозитория
 - разные репозитории не конфликтуют по имени `zellij` session
 - versioned config не загрязняется runtime identifiers
+- `session_name` использует тот же repo identifier, что и `launch_agent.*`
 
 Минусы:
 
 - при ручном удалении или resurrect `zellij` session нужен отдельный runtime
   handling
-- bootstrap должен уметь вычислять `repo_name`
+- runtime должен валидировать, что в `session_name` не остались
+  неразрешенные `${...}`
 
 ## Связанные документы
 
@@ -69,3 +73,9 @@ Runtime `zellij` identifiers не хранятся в versioned config:
 ### 2026-03-13
 
 - зафиксирован naming contract для `zellij.session_name` и `zellij.tab_name`
+
+### 2026-03-14
+
+- bootstrap placeholder `__SESSION_NAME__` удален из init-шаблона
+- default для `zellij.session_name` переведен на `${REPO}`
+- рендеринг `zellij.session_name` унифицирован с общим template contract

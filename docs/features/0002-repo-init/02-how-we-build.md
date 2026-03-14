@@ -96,7 +96,7 @@
 - присутствуют обязательные поля MVP
 - `github.project_id` заполняется placeholder-значением, требующим ручной
   донастройки
-- `zellij.session_name` вычисляется как `{repo_name}-ai-teamlead`
+- `zellij.session_name` bootstrap-ится как template `${REPO}`
 - `zellij.tab_name` по умолчанию равно `issue-analysis`
 - `launch_agent.analysis_branch_template` по умолчанию равно
   `analysis/issue-${ISSUE_NUMBER}`
@@ -109,7 +109,8 @@
 
 1. вручную заменить `github.project_id` placeholder на реальный GitHub Project
    id
-2. при необходимости скорректировать `zellij.session_name`
+2. при необходимости скорректировать literal или template
+   `zellij.session_name`
 3. при необходимости скорректировать `launch_agent.*` templates
 4. только после этого запускать `poll` или `run`
 

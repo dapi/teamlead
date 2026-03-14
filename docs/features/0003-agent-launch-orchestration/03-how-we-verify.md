@@ -39,7 +39,8 @@ Feature считается готовой, если:
 ### Сценарий 1. Нет session
 
 - запускается `run`
-- `ai-teamlead` создает новую session с именем `{repo_name}-ai-teamlead`
+- `ai-teamlead` рендерит `${REPO}` в `zellij.session_name` и создает новую
+  session с этим именем
 - создается tab `issue-analysis`
 - открывается новая pane
 

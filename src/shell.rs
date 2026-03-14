@@ -85,7 +85,9 @@ impl Shell for SystemShell {
             let stderr = stdout
                 .try_clone()
                 .with_context(|| format!("failed to clone spawn log handle: {}", path.display()))?;
-            command.stdout(Stdio::from(stdout)).stderr(Stdio::from(stderr));
+            command
+                .stdout(Stdio::from(stdout))
+                .stderr(Stdio::from(stderr));
         } else {
             command.stdout(Stdio::null()).stderr(Stdio::null());
         }

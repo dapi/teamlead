@@ -88,10 +88,16 @@ fi
 WORKTREE_ROOT="${HOME}/worktrees/example/analysis/issue-43"
 ARTIFACTS_DIR="$WORKTREE_ROOT/specs/issues/43"
 ARTIFACT_README="$ARTIFACTS_DIR/README.md"
+ARTIFACT_WHAT="$ARTIFACTS_DIR/01-what-we-build.md"
+ARTIFACT_HOW="$ARTIFACTS_DIR/02-how-we-build.md"
+ARTIFACT_VERIFY="$ARTIFACTS_DIR/03-how-we-verify.md"
 
 wait_for_dir "$WORKTREE_ROOT" 30 || true
 wait_for_dir "$ARTIFACTS_DIR" 30 || true
 wait_for_file "$ARTIFACT_README" 30 || true
+wait_for_file "$ARTIFACT_WHAT" 30 || true
+wait_for_file "$ARTIFACT_HOW" 30 || true
+wait_for_file "$ARTIFACT_VERIFY" 30 || true
 wait_for_file "$STUB_OUT/complete-stage.exit_code" 30 || true
 
 PANE_ID="$(wait_for_json_field_not_value "$SESSION_MANIFEST" '.zellij.pane_id' 'pending' 30 || true)"
@@ -101,7 +107,10 @@ FLOW_STATUS="$(wait_for_json_field_not_value "$ISSUE_INDEX" '.last_known_flow_st
 assert_file_exists "$ISSUE_INDEX" "run created issue index for complete-stage flow"
 assert_file_exists "$SESSION_MANIFEST" "run created session manifest for complete-stage flow"
 assert_file_exists "$STUB_OUT/codex.invoked" "stub agent started inside zellij pane"
-assert_file_exists "$ARTIFACT_README" "stub agent created analysis artifact"
+assert_file_exists "$ARTIFACT_README" "stub agent created issue README"
+assert_file_exists "$ARTIFACT_WHAT" "stub agent created what-we-build artifact"
+assert_file_exists "$ARTIFACT_HOW" "stub agent created how-we-build artifact"
+assert_file_exists "$ARTIFACT_VERIFY" "stub agent created how-we-verify artifact"
 assert_eq "$(cat "$STUB_OUT/complete-stage.exit_code")" "0" "complete-stage exited successfully"
 assert_eq "$(cat "$STUB_OUT/issue_url")" "https://github.com/dapi/example/issues/43" "stub agent received issue URL"
 assert_eq "$(cat "$STUB_OUT/session_uuid")" "$SESSION_UUID" "stub agent received session UUID"
@@ -112,7 +121,13 @@ assert_eq "$(cat "$STUB_OUT/codex.cwd")" "$WORKTREE_ROOT" "stub agent ran inside
 assert_ne "$PANE_ID" "" "complete-stage flow captured zellij pane id"
 assert_eq "$SESSION_STATUS" "completed" "complete-stage marked session as completed"
 assert_eq "$FLOW_STATUS" "Waiting for Plan Review" "complete-stage updated issue flow status"
-assert_file_contains "$ARTIFACT_README" "generated from stub codex agent" "artifact content was written before complete-stage"
+assert_file_contains "$ARTIFACT_README" "generated from stub codex agent" "artifact README content was written before complete-stage"
+assert_file_contains "$ARTIFACT_README" "01-what-we-build.md" "artifact README links what-we-build doc"
+assert_file_contains "$ARTIFACT_WHAT" "## User Story" "feature artifact includes User Story section"
+assert_file_contains "$ARTIFACT_WHAT" "## Use Cases" "feature artifact includes Use Cases section"
+assert_file_contains "$ARTIFACT_HOW" "## Approach" "how-we-build artifact includes Approach section"
+assert_file_contains "$ARTIFACT_VERIFY" "## Acceptance Criteria" "how-we-verify artifact includes Acceptance Criteria section"
+assert_file_contains "$ARTIFACT_VERIFY" "## Verification Checklist" "how-we-verify artifact includes Verification Checklist section"
 assert_eq "$(git -C "$WORKTREE_ROOT" log -1 --pretty=%s)" "analysis(#43): stub analysis ready" "complete-stage committed analysis artifacts"
 assert_eq "$(git -C "$WORKTREE_ROOT" status --short)" "" "analysis worktree is clean after complete-stage commit"
 if git --git-dir="$REMOTE_REPO" show-ref --verify --quiet refs/heads/analysis/issue-43; then

@@ -94,6 +94,39 @@ else
     ((FAIL++)) || true
 fi
 
+if grep -Fq 'README.md' "$FLOW_FILE" && \
+   grep -Fq '01-what-we-build.md' "$FLOW_FILE" && \
+   grep -Fq '02-how-we-build.md' "$FLOW_FILE" && \
+   grep -Fq '03-how-we-verify.md' "$FLOW_FILE"; then
+    echo "  PASS: init bootstraps minimal SDD artifact contract"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init bootstraps minimal SDD artifact contract"
+    ((FAIL++)) || true
+fi
+
+if grep -Fq 'User Story' "$FLOW_WHAT_FILE" && \
+   grep -Fq 'Use Cases' "$FLOW_WHAT_FILE" && \
+   grep -Fq 'Observed Behavior' "$FLOW_WHAT_FILE" && \
+   grep -Fq 'Operational Goal' "$FLOW_WHAT_FILE"; then
+    echo "  PASS: init bootstraps rule-based task sections for what-we-build"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init bootstraps rule-based task sections for what-we-build"
+    ((FAIL++)) || true
+fi
+
+if grep -Fq 'Acceptance Criteria' "$FLOW_VERIFY_FILE" && \
+   grep -Fq 'Happy Path' "$FLOW_VERIFY_FILE" && \
+   grep -Fq 'Regression Checks' "$FLOW_VERIFY_FILE" && \
+   grep -Fq 'Operational Validation' "$FLOW_VERIFY_FILE"; then
+    echo "  PASS: init bootstraps rule-based task sections for how-we-verify"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init bootstraps rule-based task sections for how-we-verify"
+    ((FAIL++)) || true
+fi
+
 NO_GIT_DIR="$(mktemp -d /tmp/ai-teamlead-init-no-git-XXXXXX)"
 NO_GIT_OUTPUT_FILE="$(mktemp /tmp/ai-teamlead-init-no-git-output-XXXXXX)"
 

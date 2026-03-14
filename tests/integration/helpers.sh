@@ -218,6 +218,7 @@ create_initialized_repo() {
     (
         cd "$repo_root"
         "$ai_teamlead_bin" init >/dev/null
+        sed -i '/^  layout: "compact"$/d' .ai-teamlead/settings.yml
         git add .ai-teamlead .claude .codex init.sh
         git commit -q -m "bootstrap ai-teamlead"
     )
@@ -344,9 +345,121 @@ fi
 
 mkdir -p "${AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR:?}"
 cat > "${AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR}/README.md" <<'DOC'
-# Test artifact
+# Issue 43: Test artifact
+
+Статус: draft
+Issue: https://github.com/dapi/example/issues/43
+
+## Артефакты
+
+- [01-what-we-build.md](./01-what-we-build.md)
+- [02-how-we-build.md](./02-how-we-build.md)
+- [03-how-we-verify.md](./03-how-we-verify.md)
 
 - generated from stub codex agent
+DOC
+
+cat > "${AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR}/01-what-we-build.md" <<'DOC'
+# Что строим
+
+## Problem
+
+Нужен versioned SDD-комплект.
+
+## Who Is It For
+
+- repo owner
+
+## Outcome
+
+- создаются README.md, 01-what-we-build.md, 02-how-we-build.md, 03-how-we-verify.md
+
+## Scope
+
+- сформировать минимальный комплект
+
+## Non-Goals
+
+- implementation после анализа
+
+## Constraints And Assumptions
+
+- issue остается в GitHub Project
+
+## User Story
+
+Как владелец репозитория, я хочу получить SDD-комплект.
+
+## Use Cases
+
+- агент создает все четыре документа
+DOC
+
+cat > "${AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR}/02-how-we-build.md" <<'DOC'
+# Как строим
+
+## Approach
+
+- используем staged prompts
+
+## Affected Areas
+
+- project-local flow
+
+## Interfaces And Data
+
+- AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR
+
+## Configuration And Runtime Assumptions
+
+- launcher заранее создает каталог
+
+## Risks
+
+- агент может пропустить обязательный файл
+DOC
+
+cat > "${AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR}/03-how-we-verify.md" <<'DOC'
+# Как проверяем
+
+## Acceptance Criteria
+
+- создан полный SDD-комплект
+
+## Ready Criteria
+
+- комплект пригоден для review
+
+## Invariants
+
+- есть минимум один документ на каждую ось
+
+## Test Plan
+
+- проверить четыре файла
+
+## Verification Checklist
+
+- README.md
+- 01-what-we-build.md
+- 02-how-we-build.md
+- 03-how-we-verify.md
+
+## Happy Path
+
+- feature issue создает User Story и Use Cases
+
+## Edge Cases
+
+- small issue не создает лишние документы
+
+## Failure Scenarios
+
+- создается только один README.md
+
+## Observability
+
+- видно analysis_artifacts_dir и issue URL
 DOC
 
 printf 'invoked\n' > "$OUT_DIR/codex.invoked"

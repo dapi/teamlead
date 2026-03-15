@@ -57,6 +57,56 @@ pub struct RunStageDecision {
     pub stage: Option<FlowStage>,
 }
 
+pub fn allowed_run_statuses(
+    analysis_statuses: &FlowStatuses,
+    implementation_statuses: &ImplementationFlowStatuses,
+) -> Vec<String> {
+    vec![
+        analysis_statuses.backlog.clone(),
+        analysis_statuses.waiting_for_clarification.clone(),
+        analysis_statuses.waiting_for_plan_review.clone(),
+        analysis_statuses.analysis_blocked.clone(),
+        implementation_statuses.ready_for_implementation.clone(),
+        implementation_statuses.implementation_in_progress.clone(),
+        implementation_statuses.waiting_for_ci.clone(),
+        implementation_statuses.waiting_for_code_review.clone(),
+        implementation_statuses.implementation_blocked.clone(),
+    ]
+}
+
+pub fn format_run_denied_message(
+    issue_number: u64,
+    current_status: &str,
+    allowed_statuses: &[String],
+) -> String {
+    format!(
+        "Невозможно запустить run для issue #{issue_number}\n\nТекущий статус: \"{current_status}\"\nДопустимые статусы для run: {}\n\nАвтоисправление не выполнено: система не может однозначно выбрать корректный target status.\nИзмените статус issue в GitHub Project вручную и повторите run.",
+        allowed_statuses.join(", ")
+    )
+}
+
+pub fn format_missing_issue_message(issue_number: u64, owner: &str, repo: &str) -> String {
+    format!(
+        "Issue #{issue_number} не найдена в репозитории {owner}/{repo}.\nПроверьте номер issue или URL и повторите run."
+    )
+}
+
+pub fn format_closed_issue_message(issue_number: u64, state: &str, issue_url: &str) -> String {
+    format!(
+        "Невозможно запустить run для issue #{issue_number}\n\nТекущее состояние issue: {state}\nURL: {issue_url}\n\nrun работает только для открытых issue и не переоткрывает их автоматически."
+    )
+}
+
+pub fn format_project_attachment_failure_message(
+    issue_number: u64,
+    project_id: &str,
+    issue_url: &str,
+) -> String {
+    format!(
+        "Issue #{issue_number} не привязана к GitHub Project \"{project_id}\", и автоисправление не удалось.\nURL: {issue_url}\nПроверьте доступ к проекту и привязку issue, затем повторите run."
+    )
+}
+
 pub fn can_run_analysis(status: &str, statuses: &FlowStatuses) -> RunDecision {
     if status == statuses.backlog {
         return RunDecision {
@@ -242,6 +292,65 @@ mod tests {
         let decision = decide_run_stage("Backlog", &statuses(), &implementation_statuses());
         assert!(decision.allowed);
         assert_eq!(decision.stage, Some(FlowStage::Analysis));
+    }
+
+    #[test]
+    fn allowed_run_statuses_include_analysis_and_implementation_entries() {
+        let allowed = allowed_run_statuses(&statuses(), &implementation_statuses());
+
+        assert_eq!(
+            allowed,
+            vec![
+                "Backlog",
+                "Waiting for Clarification",
+                "Waiting for Plan Review",
+                "Analysis Blocked",
+                "Ready for Implementation",
+                "Implementation In Progress",
+                "Waiting for CI",
+                "Waiting for Code Review",
+                "Implementation Blocked",
+            ]
+        );
+    }
+
+    #[test]
+    fn format_run_denied_message_lists_current_and_allowed_statuses() {
+        let message = format_run_denied_message(
+            42,
+            "Analysis In Progress",
+            &allowed_run_statuses(&statuses(), &implementation_statuses()),
+        );
+
+        assert!(message.contains("issue #42"));
+        assert!(message.contains("Analysis In Progress"));
+        assert!(message.contains("Ready for Implementation"));
+        assert!(message.contains("Автоисправление не выполнено"));
+    }
+
+    #[test]
+    fn format_missing_issue_message_mentions_repo() {
+        let message = format_missing_issue_message(42, "dapi", "teamlead");
+        assert!(message.contains("dapi/teamlead"));
+    }
+
+    #[test]
+    fn format_closed_issue_message_mentions_url_and_state() {
+        let message =
+            format_closed_issue_message(42, "CLOSED", "https://github.com/dapi/teamlead/issues/42");
+        assert!(message.contains("CLOSED"));
+        assert!(message.contains("https://github.com/dapi/teamlead/issues/42"));
+    }
+
+    #[test]
+    fn format_project_attachment_failure_mentions_project() {
+        let message = format_project_attachment_failure_message(
+            42,
+            "PVT_project",
+            "https://github.com/dapi/teamlead/issues/42",
+        );
+        assert!(message.contains("PVT_project"));
+        assert!(message.contains("автоисправление не удалось"));
     }
 
     #[test]

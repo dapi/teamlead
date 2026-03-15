@@ -320,6 +320,41 @@ if [[ "$ARGS" == *"updateProjectV2ItemFieldValue"* ]]; then
     exit 0
 fi
 
+if [[ "$ARGS" == *"addProjectV2ItemById"* ]]; then
+    if [[ -n "${AI_TEAMLEAD_TEST_GH_ADD_PROJECT_RESULT:-}" ]]; then
+        printf '%s\n' "$AI_TEAMLEAD_TEST_GH_ADD_PROJECT_RESULT"
+    else
+        printf '{"data":{"addProjectV2ItemById":{"item":{"id":"ITEM-AUTO-ADDED"}}}}\n'
+    fi
+    exit 0
+fi
+
+if [[ "$ARGS" == *"repository(owner: \$owner, name: \$repo)"* ]]; then
+    if [[ -n "${AI_TEAMLEAD_TEST_GH_REPO_ISSUE_FILE:-}" ]]; then
+        cat "$AI_TEAMLEAD_TEST_GH_REPO_ISSUE_FILE"
+    else
+        owner="dapi"
+        repo="example"
+        number="42"
+        if [[ "$ARGS" =~ owner=([^[:space:]]+) ]]; then
+            owner="${BASH_REMATCH[1]}"
+        fi
+        if [[ "$ARGS" =~ repo=([^[:space:]]+) ]]; then
+            repo="${BASH_REMATCH[1]}"
+        fi
+        if [[ "$ARGS" =~ number=([^[:space:]]+) ]]; then
+            number="${BASH_REMATCH[1]}"
+        fi
+        printf '{"data":{"repository":{"issue":{"id":"ISSUE_%s","number":%s,"state":"OPEN","url":"https://github.com/%s/%s/issues/%s"}}}}\n' \
+            "$number" \
+            "$number" \
+            "$owner" \
+            "$repo" \
+            "$number"
+    fi
+    exit 0
+fi
+
 cat "$SNAPSHOT_FILE"
 EOF
     sed -i \

@@ -28,6 +28,8 @@ wait_for_json_field_not_value "$SESSION_MANIFEST_42" '.zellij.tab_id' 'pending' 
         zellij action new-tab --name issue-analysis
 )
 
+sleep 1
+
 DUPLICATE_OUTPUT="$(
     cd "$REPO_ROOT"
     if "$AI_TEAMLEAD_BIN" internal launch-zellij-fixture 43 2>&1; then
@@ -35,4 +37,4 @@ DUPLICATE_OUTPUT="$(
     fi
 )"
 
-assert_text_contains "$DUPLICATE_OUTPUT" "duplicate tabs named 'issue-analysis'" "pane launch target rejects duplicate shared tabs"
+assert_text_contains "$DUPLICATE_OUTPUT" "requires a unique shared tab" "pane launch target rejects duplicate shared tabs"

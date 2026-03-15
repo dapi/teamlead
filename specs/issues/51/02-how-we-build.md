@@ -1,16 +1,10 @@
 # Issue 51: Как строим
 
-<<<<<<< HEAD
 Статус: approved
 Последнее обновление: 2026-03-14
 Статус согласования: approved
 Approved By: dapi
 Approved At: 2026-03-14T23:05:41+03:00
-=======
-Статус: draft
-Последнее обновление: 2026-03-14
-Статус согласования: pending human review
->>>>>>> 892dcb3 (analysis(#51): post-merge lifecycle contract documented)
 
 ## Approach
 

@@ -1,21 +1,13 @@
 # Issue 51: определить post-merge lifecycle после merge implementation PR
 
-<<<<<<< HEAD
 Статус: approved
-=======
-Статус: draft
->>>>>>> 892dcb3 (analysis(#51): post-merge lifecycle contract documented)
 Тип задачи: `feature`
 Тип проекта: `infra/platform`
 Размер: `medium`
 Последнее обновление: 2026-03-14
-<<<<<<< HEAD
 Статус согласования: approved
 Approved By: dapi
 Approved At: 2026-03-14T23:05:41+03:00
-=======
-Статус согласования: pending human review
->>>>>>> 892dcb3 (analysis(#51): post-merge lifecycle contract documented)
 
 ## Контекст
 
@@ -47,13 +39,8 @@ lifecycle без ввода лишнего третьего flow для MVP.
   агентской сессии;
 - issue переводится из `Waiting for Plan Review` в `Ready for Implementation`.
 
-<<<<<<< HEAD
 В этот момент пакет должен поменять `Статус согласования` на `approved` и
 зафиксировать:
-=======
-В этот момент пакет должен поменять `Статус согласования` с
-`pending human review` на `approved` и зафиксировать:
->>>>>>> 892dcb3 (analysis(#51): post-merge lifecycle contract documented)
 
 - `Approved By`
 - `Approved At`

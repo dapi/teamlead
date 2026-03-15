@@ -616,8 +616,8 @@ mod tests {
 
     use super::{
         ZellijLauncher, capture_current_binding_with_ids, pane_id_matches,
-        render_analysis_tab_layout, resolve_current_tab_binding,
-        resolve_tab_id, resolve_tab_id_from_panes,
+        render_analysis_tab_layout, resolve_current_tab_binding, resolve_tab_id,
+        resolve_tab_id_from_panes,
     };
     use crate::config::ZellijConfig;
     use crate::domain::FlowStage;

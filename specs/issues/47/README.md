@@ -1,11 +1,13 @@
 # Issue 47: `run`: configurable launch target defaults and CLI override for `pane`/`tab`
 
-Статус: draft
+Статус: approved
 Тип задачи: `feature`
 Тип проекта: `infra/platform`
 Размер: `medium`
 Последнее обновление: 2026-03-15
-Статус согласования: pending human review
+Статус согласования: approved
+Approved By: dapi
+Approved At: 2026-03-15T11:48:33+03:00
 
 ## Issue
 
@@ -31,8 +33,8 @@ Issue вводит явный launcher contract для выбора analysis lau
 
 ## Status
 
-Черновик анализа готов к human review и переводу issue в
-`Waiting for Plan Review`.
+Пакет анализа утвержден и готов быть каноническим входом для implementation
+stage после перевода issue в `Ready for Implementation`.
 
 ## Artifacts
 

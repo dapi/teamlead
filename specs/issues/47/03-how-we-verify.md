@@ -1,7 +1,9 @@
 # Issue 47: Как проверяем
 
-Статус: draft
-Статус согласования: pending human review
+Статус: approved
+Статус согласования: approved
+Approved By: dapi
+Approved At: 2026-03-15T11:48:33+03:00
 
 ## Acceptance Criteria
 

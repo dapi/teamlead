@@ -1,7 +1,10 @@
-# План имплементации для issue 47: configurable `launch_target` for `run`
+# Issue 47: План имплементации
 
-Статус: draft
+Статус: approved
 Последнее обновление: 2026-03-15
+Статус согласования: approved
+Approved By: dapi
+Approved At: 2026-03-15T11:48:33+03:00
 
 ## Назначение
 

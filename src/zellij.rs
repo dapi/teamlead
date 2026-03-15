@@ -8,7 +8,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::Value;
 
-use crate::config::ZellijConfig;
+use crate::config::{LaunchTarget, ZellijConfig};
 use crate::domain::FlowStage;
 use crate::repo::RepoContext;
 use crate::runtime::RuntimeLayout;
@@ -64,6 +64,10 @@ impl<'a> ZellijLauncher<'a> {
         append_launch_log(
             &launch_log_path,
             &format!("analysis-tab-name: {}", zellij.tab_name),
+        )?;
+        append_launch_log(
+            &launch_log_path,
+            &format!("launch-target: {}", zellij.launch_target.as_str()),
         )?;
         let quoted_repo_root = shell_single_quote(repo_root.to_string_lossy().as_ref());
         let quoted_launch_agent = shell_single_quote("./.ai-teamlead/launch-agent.sh");
@@ -131,18 +135,36 @@ exec {quoted_launch_agent} {quoted_session_uuid} {quoted_issue_url}\n"
         let layout_str = layout_path.to_string_lossy();
 
         if session_exists {
-            append_launch_log(
-                &launch_log_path,
-                "launcher-path: existing session, add analysis tab",
-            )?;
             ensure_session_repo_scope(self.shell, repo_root, repo, &zellij.session_name)?;
-            add_analysis_tab_to_existing_session(
-                self.shell,
-                repo_root,
-                &zellij.session_name,
-                &layout_str,
-            )?;
-            Ok(())
+            match zellij.launch_target {
+                LaunchTarget::Tab => {
+                    append_launch_log(
+                        &launch_log_path,
+                        "launcher-path: existing session, add analysis tab",
+                    )?;
+                    add_analysis_tab_to_existing_session(
+                        self.shell,
+                        repo_root,
+                        &zellij.session_name,
+                        &layout_str,
+                    )
+                }
+                LaunchTarget::Pane => {
+                    append_launch_log(
+                        &launch_log_path,
+                        "launcher-path: existing session, reuse or create shared tab",
+                    )?;
+                    launch_in_existing_or_new_shared_tab(
+                        self.shell,
+                        repo_root,
+                        &zellij.session_name,
+                        &zellij.tab_name,
+                        &layout_str,
+                        &entrypoint_path,
+                        &launch_log_path,
+                    )
+                }
+            }
         } else {
             let launch = if let Some(layout_name) = zellij.layout.as_deref() {
                 append_launch_log(
@@ -170,13 +192,34 @@ exec {quoted_launch_agent} {quoted_session_uuid} {quoted_issue_url}\n"
                 &zellij.session_name,
                 &launch_log_path,
             )?;
-            add_analysis_tab_with_retry(
-                self.shell,
-                repo_root,
-                &zellij.session_name,
-                &layout_str,
-                &launch_log_path,
-            )
+            match zellij.launch_target {
+                LaunchTarget::Tab => {
+                    append_launch_log(
+                        &launch_log_path,
+                        "launcher-path: new session, create analysis tab",
+                    )?;
+                    add_analysis_tab_with_retry(
+                        self.shell,
+                        repo_root,
+                        &zellij.session_name,
+                        &layout_str,
+                        &launch_log_path,
+                    )
+                }
+                LaunchTarget::Pane => {
+                    append_launch_log(
+                        &launch_log_path,
+                        "launcher-path: new session, create shared tab for pane target",
+                    )?;
+                    add_analysis_tab_with_retry(
+                        self.shell,
+                        repo_root,
+                        &zellij.session_name,
+                        &layout_str,
+                        &launch_log_path,
+                    )
+                }
+            }
         }
     }
 }
@@ -294,6 +337,103 @@ fn add_analysis_tab_with_retry(
     Err(error).context("failed at launcher step: add analysis tab")
 }
 
+fn launch_in_existing_or_new_shared_tab(
+    shell: &dyn Shell,
+    repo_root: &Path,
+    session_name: &str,
+    tab_name: &str,
+    layout_path: &str,
+    entrypoint_path: &Path,
+    launch_log_path: &Path,
+) -> Result<()> {
+    let tab_ids = find_tab_ids_by_name(shell, repo_root, session_name, tab_name)?;
+    match tab_ids.as_slice() {
+        [] => {
+            append_launch_log(
+                launch_log_path,
+                &format!("launcher-step: shared tab '{tab_name}' missing; creating it"),
+            )?;
+            add_analysis_tab_with_retry(
+                shell,
+                repo_root,
+                session_name,
+                layout_path,
+                launch_log_path,
+            )
+        }
+        [tab_id] => {
+            append_launch_log(
+                launch_log_path,
+                &format!("launcher-step: reuse shared tab '{tab_name}' id={tab_id}"),
+            )?;
+            open_new_pane_in_existing_tab(
+                shell,
+                repo_root,
+                session_name,
+                tab_id,
+                entrypoint_path,
+                launch_log_path,
+            )
+        }
+        _ => {
+            let joined_ids = tab_ids.join(", ");
+            append_launch_log(
+                launch_log_path,
+                &format!(
+                    "launcher-step: duplicate shared tabs for '{tab_name}' detected: {joined_ids}"
+                ),
+            )?;
+            bail!(
+                "zellij session '{}' contains duplicate tabs named '{}': {}; pane launch target requires a unique shared tab",
+                session_name,
+                tab_name,
+                joined_ids
+            );
+        }
+    }
+}
+
+fn open_new_pane_in_existing_tab(
+    shell: &dyn Shell,
+    repo_root: &Path,
+    session_name: &str,
+    tab_id: &str,
+    entrypoint_path: &Path,
+    launch_log_path: &Path,
+) -> Result<()> {
+    run_session_scoped_zellij_action(
+        shell,
+        repo_root,
+        session_name,
+        &["action", "go-to-tab-by-id", tab_id],
+    )
+    .context("failed at launcher step: focus shared tab")?;
+
+    let entrypoint_path = entrypoint_path.to_string_lossy().to_string();
+    let pane_cwd = repo_root.to_string_lossy().to_string();
+    let args = vec![
+        "action".to_string(),
+        "new-pane".to_string(),
+        "--cwd".to_string(),
+        pane_cwd,
+        "--".to_string(),
+        "bash".to_string(),
+        entrypoint_path,
+    ];
+    let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let pane_id = run_session_scoped_zellij_action(shell, repo_root, session_name, &arg_refs)
+        .context("failed at launcher step: open shared pane")?;
+    append_launch_log(
+        launch_log_path,
+        &format!(
+            "launcher-step: opened new pane in shared tab id={} pane_id={}",
+            tab_id,
+            pane_id.trim()
+        ),
+    )?;
+    Ok(())
+}
+
 fn run_session_scoped_zellij_action(
     shell: &dyn Shell,
     cwd: &Path,
@@ -314,6 +454,25 @@ fn run_session_scoped_zellij_action(
     command.extend(args.iter().map(|arg| arg.to_string()));
     let command_refs = command.iter().map(String::as_str).collect::<Vec<_>>();
     shell.run(cwd, "env", &command_refs)
+}
+
+fn find_tab_ids_by_name(
+    shell: &dyn Shell,
+    repo_root: &Path,
+    session_name: &str,
+    target_tab_name: &str,
+) -> Result<Vec<String>> {
+    let panes_output = run_session_scoped_zellij_action(
+        shell,
+        repo_root,
+        session_name,
+        &["action", "list-panes", "--json", "-a", "-c", "-t", "-s"],
+    )?;
+    let value: Value = serde_json::from_str(&panes_output)
+        .context("failed to parse zellij pane metadata while resolving target tab")?;
+    let mut tab_ids = BTreeSet::new();
+    collect_matching_tab_ids(&value, target_tab_name, &mut tab_ids);
+    Ok(tab_ids.into_iter().collect())
 }
 
 fn ensure_session_repo_scope(
@@ -429,14 +588,10 @@ fn resolve_current_tab_binding(
             .ok()
             .filter(|output| !output.trim().is_empty());
 
-        let tab_id = current_tab_output
+        let tab_id = list_panes_output
             .as_deref()
-            .and_then(resolve_tab_id)
-            .or_else(|| {
-                list_panes_output
-                    .as_deref()
-                    .and_then(|json| resolve_tab_id_from_panes(json, pane_id))
-            });
+            .and_then(|json| resolve_tab_id_from_panes(json, pane_id))
+            .or_else(|| current_tab_output.as_deref().and_then(resolve_tab_id));
         if let Some(tab_id) = tab_id {
             return Ok((tab_id, current_tab_output, list_panes_output));
         }
@@ -456,13 +611,44 @@ fn resolve_current_tab_binding(
 
 fn resolve_tab_id(json: &str) -> Option<String> {
     let value: Value = serde_json::from_str(json).ok()?;
-    find_first_scalar_by_keys(&value, &["tab_id", "tabId", "id"])
+    find_first_scalar_by_keys(&value, &["tab_id", "tabId"])
 }
 
 fn resolve_tab_id_from_panes(json: &str, pane_id: &str) -> Option<String> {
     let value: Value = serde_json::from_str(json).ok()?;
-    find_object_for_pane(&value, pane_id)
+    find_non_plugin_object_for_pane(&value, pane_id)
+        .or_else(|| find_object_for_pane(&value, pane_id))
         .and_then(|entry| find_first_scalar_by_keys(entry, &["tab_id", "tabId", "tab"]))
+}
+
+fn find_non_plugin_object_for_pane<'a>(value: &'a Value, pane_id: &str) -> Option<&'a Value> {
+    match value {
+        Value::Object(map) => {
+            let matches_pane = map
+                .get("id")
+                .and_then(value_to_string)
+                .map(|value| pane_id_matches(&value, pane_id))
+                .unwrap_or(false)
+                || map
+                    .get("pane_id")
+                    .and_then(value_to_string)
+                    .map(|value| pane_id_matches(&value, pane_id))
+                    .unwrap_or(false);
+            let is_plugin = map
+                .get("is_plugin")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if matches_pane && !is_plugin {
+                return Some(value);
+            }
+            map.values()
+                .find_map(|child| find_non_plugin_object_for_pane(child, pane_id))
+        }
+        Value::Array(items) => items
+            .iter()
+            .find_map(|child| find_non_plugin_object_for_pane(child, pane_id)),
+        _ => None,
+    }
 }
 
 fn find_object_for_pane<'a>(value: &'a Value, pane_id: &str) -> Option<&'a Value> {
@@ -512,6 +698,36 @@ fn collect_pane_cwds(value: &Value, pane_cwds: &mut BTreeSet<String>) {
         Value::Array(items) => {
             for child in items {
                 collect_pane_cwds(child, pane_cwds);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_matching_tab_ids(value: &Value, target_tab_name: &str, tab_ids: &mut BTreeSet<String>) {
+    match value {
+        Value::Object(map) => {
+            let tab_name = map
+                .get("tab_name")
+                .or_else(|| map.get("tabName"))
+                .and_then(value_to_string);
+            let tab_id = map
+                .get("tab_id")
+                .or_else(|| map.get("tabId"))
+                .or_else(|| map.get("tab"))
+                .and_then(value_to_string);
+            if let (Some(tab_name), Some(tab_id)) = (tab_name, tab_id) {
+                if tab_name == target_tab_name {
+                    tab_ids.insert(tab_id);
+                }
+            }
+            for child in map.values() {
+                collect_matching_tab_ids(child, target_tab_name, tab_ids);
+            }
+        }
+        Value::Array(items) => {
+            for child in items {
+                collect_matching_tab_ids(child, target_tab_name, tab_ids);
             }
         }
         _ => {}
@@ -619,7 +835,7 @@ mod tests {
         render_analysis_tab_layout, resolve_current_tab_binding, resolve_tab_id,
         resolve_tab_id_from_panes,
     };
-    use crate::config::ZellijConfig;
+    use crate::config::{LaunchTarget, ZellijConfig};
     use crate::domain::FlowStage;
     use crate::repo::RepoContext;
     use crate::runtime::RuntimeLayout;
@@ -763,6 +979,12 @@ mod tests {
     }
 
     #[test]
+    fn ignores_generic_current_tab_id_field_without_explicit_tab_id() {
+        let json = r##"{"name":"#42","id":0}"##;
+        assert_eq!(resolve_tab_id(json), None);
+    }
+
+    #[test]
     fn resolves_tab_id_from_panes_output() {
         let json = r#"[
   {"id":"terminal_4","tab_id":9,"focused":true},
@@ -781,6 +1003,15 @@ mod tests {
   {"id":"terminal_5","tab_id":11,"focused":false}
 ]"#;
         assert_eq!(resolve_tab_id_from_panes(json, "4").as_deref(), Some("9"));
+    }
+
+    #[test]
+    fn resolves_tab_id_from_panes_preferring_non_plugin_pane_when_ids_collide() {
+        let json = r##"[
+  {"id":1,"is_plugin":true,"tab_id":0,"tab_name":"Tab #1"},
+  {"id":1,"is_plugin":false,"tab_id":7,"tab_name":"#42","pane_command":"/bin/bash"}
+]"##;
+        assert_eq!(resolve_tab_id_from_panes(json, "1").as_deref(), Some("7"));
     }
 
     #[test]
@@ -819,6 +1050,33 @@ mod tests {
     }
 
     #[test]
+    fn resolve_current_tab_binding_prefers_pane_specific_tab_id_over_current_tab_info() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        std::fs::create_dir_all(&repo_root).expect("repo root");
+
+        let shell = FakeShell::default()
+            .with_response(
+                &format!(
+                    "cwd={}::zellij action current-tab-info --json",
+                    repo_root.display()
+                ),
+                r##"{"name":"#42","tab_id":0}"##,
+            )
+            .with_response(
+                &format!(
+                    "cwd={}::zellij action list-panes --json -a -c -t -s",
+                    repo_root.display()
+                ),
+                r#"[{"id":"terminal_1","tab_id":7,"focused":true}]"#,
+            );
+
+        let (tab_id, _, _) =
+            resolve_current_tab_binding(&shell, &repo_root, "terminal_1").expect("binding");
+        assert_eq!(tab_id, "7");
+    }
+
+    #[test]
     fn capture_current_binding_retries_until_tab_metadata_is_available() {
         let temp = tempdir().expect("temp dir");
         let repo_root = temp.path().join("repo");
@@ -830,6 +1088,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead-test".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Pane,
             tab_name_template: None,
             layout: None,
         };
@@ -910,6 +1169,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Tab,
             tab_name_template: None,
             layout: None,
         };
@@ -996,6 +1256,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Tab,
             tab_name_template: None,
             layout: Some("custom-layout".into()),
         };
@@ -1070,6 +1331,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Tab,
             tab_name_template: None,
             layout: None,
         };
@@ -1113,6 +1375,169 @@ mod tests {
         assert!(
             shell.run_with_env_calls.borrow().is_empty(),
             "existing session path should not rely on inherited env via run_with_env"
+        );
+    }
+
+    #[test]
+    fn pane_launch_target_reuses_existing_shared_tab() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        let git_dir = repo_root.join(".git");
+        std::fs::create_dir_all(&git_dir).expect("git dir");
+
+        let runtime = RuntimeLayout::from_repo_root(&repo_root);
+        runtime.ensure_exists().expect("runtime");
+
+        let shell = FakeShell::default()
+            .with_response("zellij list-sessions --short", "ai-teamlead")
+            .with_response(
+                "env -u ZELLIJ -u ZELLIJ_SESSION_NAME -u ZELLIJ_PANE_ID ZELLIJ=0 ZELLIJ_SESSION_NAME=ai-teamlead zellij action list-panes --json -a -c -t -s",
+                &format!(
+                    r#"[{{"id":"terminal_1","pane_cwd":"{}","tab_id":"7","tab_name":"issue-analysis"}}]"#,
+                    repo_root.display()
+                ),
+            )
+            .with_cwd_response(
+                &repo_root,
+                "git",
+                &["rev-parse", "--show-toplevel"],
+                repo_root.to_string_lossy().as_ref(),
+            )
+            .with_cwd_response(&repo_root, "git", &["rev-parse", "--git-dir"], ".git")
+            .with_cwd_response(
+                &repo_root,
+                "git",
+                &["remote", "get-url", "origin"],
+                "git@github.com:dapi/teamlead.git",
+            )
+            .with_response(
+                "env -u ZELLIJ -u ZELLIJ_SESSION_NAME -u ZELLIJ_PANE_ID ZELLIJ=0 ZELLIJ_SESSION_NAME=ai-teamlead zellij action go-to-tab-by-id 7",
+                "",
+            )
+            .with_response(
+                "env -u ZELLIJ -u ZELLIJ_SESSION_NAME -u ZELLIJ_PANE_ID ZELLIJ=0 ZELLIJ_SESSION_NAME=ai-teamlead zellij action new-pane --cwd",
+                "terminal_22",
+            );
+        let launcher = ZellijLauncher::new(&shell);
+        write_analysis_tab_template(&repo_root, default_analysis_tab_template());
+        let repo = RepoContext {
+            repo_root: repo_root.clone(),
+            git_dir,
+            github_owner: "dapi".into(),
+            github_repo: "teamlead".into(),
+        };
+        let zellij = ZellijConfig {
+            session_name: "ai-teamlead".into(),
+            tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Pane,
+            tab_name_template: None,
+            layout: None,
+        };
+
+        launcher
+            .launch_issue_stage(
+                &repo,
+                &repo_root,
+                &runtime,
+                &zellij,
+                FlowStage::Analysis,
+                "https://github.com/dapi/teamlead/issues/42",
+                "session-uuid",
+                Path::new("/tmp/ai-teamlead"),
+                false,
+            )
+            .expect("launch should succeed");
+
+        let runs = shell.runs.borrow();
+        assert!(
+            runs.iter()
+                .any(|cmd| cmd.contains("zellij action go-to-tab-by-id 7")),
+            "pane launcher must focus existing shared tab"
+        );
+        assert!(
+            runs.iter()
+                .any(|cmd| cmd.contains("zellij action new-pane --cwd")),
+            "pane launcher must open a new pane in the shared tab"
+        );
+        assert!(
+            !runs
+                .iter()
+                .any(|cmd| cmd.contains("zellij action new-tab --layout")),
+            "pane launcher must not create a duplicate analysis tab when one already exists"
+        );
+    }
+
+    #[test]
+    fn pane_launch_target_rejects_duplicate_shared_tabs() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        let git_dir = repo_root.join(".git");
+        std::fs::create_dir_all(&git_dir).expect("git dir");
+
+        let runtime = RuntimeLayout::from_repo_root(&repo_root);
+        runtime.ensure_exists().expect("runtime");
+
+        let shell = FakeShell::default()
+            .with_response("zellij list-sessions --short", "ai-teamlead")
+            .with_response(
+                "env -u ZELLIJ -u ZELLIJ_SESSION_NAME -u ZELLIJ_PANE_ID ZELLIJ=0 ZELLIJ_SESSION_NAME=ai-teamlead zellij action list-panes --json -a -c -t -s",
+                &format!(
+                    r#"[
+  {{"id":"terminal_1","pane_cwd":"{}","tab_id":"7","tab_name":"issue-analysis"}},
+  {{"id":"terminal_2","pane_cwd":"{}","tab_id":"8","tab_name":"issue-analysis"}}
+]"#,
+                    repo_root.display(),
+                    repo_root.display()
+                ),
+            )
+            .with_cwd_response(
+                &repo_root,
+                "git",
+                &["rev-parse", "--show-toplevel"],
+                repo_root.to_string_lossy().as_ref(),
+            )
+            .with_cwd_response(&repo_root, "git", &["rev-parse", "--git-dir"], ".git")
+            .with_cwd_response(
+                &repo_root,
+                "git",
+                &["remote", "get-url", "origin"],
+                "git@github.com:dapi/teamlead.git",
+            );
+        let launcher = ZellijLauncher::new(&shell);
+        write_analysis_tab_template(&repo_root, default_analysis_tab_template());
+        let repo = RepoContext {
+            repo_root: repo_root.clone(),
+            git_dir,
+            github_owner: "dapi".into(),
+            github_repo: "teamlead".into(),
+        };
+        let zellij = ZellijConfig {
+            session_name: "ai-teamlead".into(),
+            tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Pane,
+            tab_name_template: None,
+            layout: None,
+        };
+
+        let error = launcher
+            .launch_issue_stage(
+                &repo,
+                &repo_root,
+                &runtime,
+                &zellij,
+                FlowStage::Analysis,
+                "https://github.com/dapi/teamlead/issues/42",
+                "session-uuid",
+                Path::new("/tmp/ai-teamlead"),
+                false,
+            )
+            .expect_err("duplicate shared tabs must fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("duplicate tabs named 'issue-analysis'"),
+            "unexpected error: {error:#}"
         );
     }
 
@@ -1161,6 +1586,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Pane,
             tab_name_template: None,
             layout: None,
         };
@@ -1218,6 +1644,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Tab,
             tab_name_template: None,
             layout: None,
         };
@@ -1279,6 +1706,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Tab,
             tab_name_template: None,
             layout: None,
         };
@@ -1333,6 +1761,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Tab,
             tab_name_template: None,
             layout: Some("missing-layout".into()),
         };

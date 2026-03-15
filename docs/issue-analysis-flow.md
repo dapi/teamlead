@@ -182,9 +182,16 @@ Poller или ручной запуск выбирает одну подходя
 - issue связывается с этим `session_uuid` в отношении `1 <-> 1`
 - target `zellij` session определяется в порядке:
   `--zellij-session` -> `ZELLIJ_SESSION_NAME` -> `zellij.session_name`
-- `zellij.tab_name` задается конфигурацией проекта
+- effective launch target для `run` определяется в порядке:
+  `--launch-target` -> `zellij.launch_target` -> runtime default `tab`
+- `poll` и `loop` не имеют отдельного public `--launch-target` override и
+  используют только config/default path
+- `zellij.tab_name` задает stable shared tab для `pane`-режима
+- optional `zellij.tab_name_template` влияет только на `tab`-режим
 - orchestration-слой создает или находит нужные session/tab по effective target
-  session и `tab_name`
+  session и launch target:
+  - `pane` переиспользует shared tab или создает его, если он отсутствует
+  - `tab` создает отдельный analysis tab
 - existing session не должна содержать panes из другого GitHub repo
 - после запуска pane в runtime state сохраняются `zellij.session_id`,
   `zellij.tab_id` и `zellij.pane_id`

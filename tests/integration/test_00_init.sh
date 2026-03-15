@@ -122,6 +122,14 @@ else
     ((FAIL++)) || true
 fi
 
+if grep -Fq '#   launch_target: "tab"' "$SETTINGS_FILE"; then
+    echo "  PASS: init documents launch_target runtime default as tab"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init documents launch_target runtime default as tab"
+    ((FAIL++)) || true
+fi
+
 if grep -Fq 'plugin location="compact-bar"' "$ANALYSIS_TAB_TEMPLATE_FILE"; then
     echo "  PASS: init bootstraps analysis tab with compact-bar"
     ((PASS++)) || true

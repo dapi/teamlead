@@ -62,6 +62,7 @@
 - [ROADMAP.md](./ROADMAP.md) как repo-level карта backlog, кластеров и
   зависимостей
 - [docs/code-quality.md](./docs/code-quality.md)
+- [docs/config.md](./docs/config.md)
 - [docs/documentation-structure.md](./docs/documentation-structure.md)
 - [docs/documentation-process.md](./docs/documentation-process.md)
 - [docs/implementation-plan.md](./docs/implementation-plan.md)
@@ -191,159 +192,28 @@ Flow реализации и handoff после принятия плана вы
 
 ## Конфигурация
 
-Основной конфиг проекта должен называться `settings.yml`.
+Основной конфиг проекта называется `settings.yml` и лежит в
+`./.ai-teamlead/` целевого репозитория.
 
-Конфиг хранится в YAML и должен лежать в каталоге `./.ai-teamlead/` целевого
-репозитория.
+Коротко:
 
-Ниже приведен только repo-level overview.
+- `ai-teamlead` всегда читает `./.ai-teamlead/settings.yml` из текущего
+  репозитория;
+- минимальный active override для MVP это `github.project_id`;
+- остальные поля могут приходить из runtime defaults и bootstrap template;
+- launcher contract для `zellij.session_name`, `zellij.tab_name`,
+  `zellij.launch_target`, `zellij.layout` и `launch_agent.*` вынесен в
+  отдельную документацию.
 
-Канонический контракт по repo-local asset layer, `settings.yml` и launcher path
-раскрывается в связанных feature-документах и ADR:
+Канонический документ по конфигурации:
+
+- [docs/config.md](./docs/config.md)
+
+Связанные документы:
 
 - [docs/features/0001-ai-teamlead-cli/README.md](./docs/features/0001-ai-teamlead-cli/README.md)
 - [docs/features/0002-repo-init/README.md](./docs/features/0002-repo-init/README.md)
 - [docs/features/0003-agent-launch-orchestration/README.md](./docs/features/0003-agent-launch-orchestration/README.md)
-
-Это означает:
-
-- по умолчанию `ai-teamlead` читает `./.ai-teamlead/settings.yml` из текущего
-  репозитория
-- разные репозитории могут иметь разные `./.ai-teamlead/settings.yml`
-- у каждого репозитория может быть свой отдельный запущенный экземпляр
-  `ai-teamlead`
-- repo context по умолчанию берется из самого репозитория, в котором запущен
-  инструмент, а не из глобального конфига пользователя
-- GitHub owner/repo для MVP всегда берутся из текущего git-репозитория и не
-  переопределяются через конфиг
-
-Минимальный active override для MVP:
-
-```yaml
-github:
-  project_id: "PVT_xxx"
-```
-
-Остальные MVP-поля приложение может брать из canonical default-layer. Поэтому
-`templates/init/settings.yml` может оставаться comment-only шаблоном, где
-defaulted-поля отражены в закомментированном виде как documented defaults, а не
-как обязательный активный YAML.
-
-Закомментированный bootstrap overview для defaulted-полей выглядит так:
-
-```yaml
-# issue_analysis_flow:
-#   statuses:
-#     backlog: "Backlog"
-#     analysis_in_progress: "Analysis In Progress"
-#     waiting_for_clarification: "Waiting for Clarification"
-#     waiting_for_plan_review: "Waiting for Plan Review"
-#     ready_for_implementation: "Ready for Implementation"
-#     analysis_blocked: "Analysis Blocked"
-#
-# issue_implementation_flow:
-#   statuses:
-#     ready_for_implementation: "Ready for Implementation"
-#     implementation_in_progress: "Implementation In Progress"
-#     waiting_for_ci: "Waiting for CI"
-#     waiting_for_code_review: "Waiting for Code Review"
-#     done: "Done"
-#     implementation_blocked: "Implementation Blocked"
-#
-# runtime:
-#   max_parallel: 1
-#   poll_interval_seconds: 3600
-#
-# zellij:
-#   session_name: "${REPO}"
-#   tab_name: "issue-analysis"
-#   tab_name_template: "#${ISSUE_NUMBER}"
-#   layout: "compact"
-#
-# launch_agent:
-#   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
-#   worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
-#   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
-#   global_args:
-#     claude:
-#       - "--permission-mode"
-#       - "auto"
-#     codex:
-#       - "--full-auto"
-#   implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
-#   implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
-#   implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
-#
-#   # opt-in example:
-#   # global_args:
-#   #   claude:
-#   #     - "--dangerously-skip-permissions"
-```
-
-`zellij.session_name` задает versioned fallback для target session, а
-`zellij.tab_name` задает versioned target tab.
-
-Documented default для `zellij.session_name` хранится в `settings.yml` как
-закомментированный template `${REPO}`. Во время реального запуска `ai-teamlead`
-подставляет сюда canonical GitHub repo slug из `origin`, если активный YAML не
-переопределяет это поле.
-
-Для `zellij.session_name` в MVP поддерживается только placeholder `${REPO}`.
-Если после рендера в значении остались `${...}`, запуск завершается ошибкой
-конфигурации. Literal-значения без placeholder остаются валидными.
-
-Во время реального запуска `ai-teamlead`:
-
-- выбирает target session в порядке:
-  `--zellij-session` -> `ZELLIJ_SESSION_NAME` -> `zellij.session_name`
-- использует выбранную session и `zellij.tab_name`, чтобы найти или создать
-  нужные session/tab
-- для existing session валидирует, что в ней нет panes из другого GitHub repo
-- сохраняет runtime `session_id`, `tab_id`, `pane_id` уже в `.git/.ai-teamlead/`
-
-`github.project_id` остается required-without-default полем.
-
-Defaulted-by-application поля MVP:
-
-- `issue_analysis_flow.statuses.*`
-- `issue_implementation_flow.statuses.*`
-- `runtime.max_parallel`
-- `runtime.poll_interval_seconds`
-- `zellij.session_name`
-- `zellij.tab_name`
-- `launch_agent.analysis_branch_template`
-- `launch_agent.worktree_root_template`
-- `launch_agent.analysis_artifacts_dir_template`
-- `launch_agent.implementation_branch_template`
-- `launch_agent.implementation_worktree_root_template`
-- `launch_agent.implementation_artifacts_dir_template`
-
-Явно допустимое `example-only extension` поле:
-
-- `zellij.layout`
-  В bootstrap template остается как закомментированный opt-in пример. При
-  отсутствии active override runtime поведение не меняется.
-
-Дополнительно имеет смысл зарезервировать место для:
-
-- `issue_analysis_flow.statuses.*`
-  Лучше хранить не просто список статусов, а именованные переходные статусы по
-  ролям. Тогда код будет работать с ключами `backlog`, `analysis_blocked` и так
-  далее, а человек сможет сопоставить их с реальными названиями статусов в
-  конкретном GitHub Project.
-
-Пока не включаем в обязательный MVP, но стоит зарезервировать место для:
-
-- `github.base_url`
-  На случай GitHub Enterprise.
-- `runtime.poll_lock_file`
-  Если захотим явно настраивать lock path для poller.
-- `prompts.issue_analysis_flow`
-  Если вынесем prompt-файлы в конфигурируемые пути.
-
-Для MVP durable-связка между issue и агентской сессией хранится в repo-local
-runtime-артефактах внутри `.git/.ai-teamlead/`.
-
 ## Project contract layer
 
 Versioned project-local contract живет в рабочем дереве репозитория:
@@ -422,7 +292,8 @@ Project-local agent assets:
 1. раскомментировать и заменить `github.project_id` на реальный GitHub Project
    id
 2. при необходимости раскомментировать и скорректировать `zellij.session_name`,
-   `zellij.layout` или `launch_agent.*` templates под layout проекта
+   `zellij.launch_target`, `zellij.layout` или `launch_agent.*` templates под
+   layout проекта
 4. только после этого запускать `poll`, `run` или `loop`
 
 Если `github.project_id` оставлен placeholder-значением или указывает на

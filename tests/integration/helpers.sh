@@ -165,6 +165,7 @@ runtime:
 zellij:
   session_name: "ai-teamlead-test"
   tab_name: "issue-analysis"
+  launch_target: "tab"
 
 launch_agent:
   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
@@ -251,6 +252,7 @@ runtime:
 zellij:
   session_name: "example"
   tab_name: "issue-analysis"
+  launch_target: "tab"
 
 launch_agent:
   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"

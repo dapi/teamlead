@@ -68,6 +68,7 @@
   "zellij": {
     "session_name": "teamlead",
     "tab_name": "issue-analysis",
+    "launch_target": "tab",
     "session_id": "zellij-session-id",
     "tab_id": "zellij-tab-id",
     "pane_id": "zellij-pane-id"

@@ -32,6 +32,7 @@
 # zellij:
 #   session_name: "${REPO}"
 #   tab_name: "issue-analysis"
+#   launch_target: "tab"
 #   tab_name_template: "#${ISSUE_NUMBER}"
 #   layout: "compact"
 #

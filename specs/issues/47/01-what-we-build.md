@@ -1,6 +1,6 @@
 # Issue 47: Что строим
 
-Статус: approved
+Статус: draft
 Статус согласования: approved
 Approved By: dapi
 Approved At: 2026-03-15T11:48:33+03:00

@@ -1,6 +1,6 @@
 # Issue 47: `run`: configurable launch target defaults and CLI override for `pane`/`tab`
 
-Статус: approved
+Статус: draft
 Тип задачи: `feature`
 Тип проекта: `infra/platform`
 Размер: `medium`

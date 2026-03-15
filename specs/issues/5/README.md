@@ -1,6 +1,6 @@
 # Issue 5: `issue-implementation-flow` как отдельный stage после analysis
 
-Статус: approved
+Статус: draft
 Тип задачи: `feature`
 Тип проекта: `infra/platform`
 Размер: `medium`

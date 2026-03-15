@@ -162,10 +162,17 @@ Stage branch: $BRANCH
 Stage artifacts dir: $ARTIFACTS_DIR"
 
     if command -v codex >/dev/null 2>&1; then
-        exec codex --cd "$WORKTREE_ROOT" --no-alt-screen "$prompt"
+        append_launch_log "starting codex agent args_count=${#CODEX_GLOBAL_ARGS[@]} worktree=$WORKTREE_ROOT"
+        exec codex --cd "$WORKTREE_ROOT" --no-alt-screen "${CODEX_GLOBAL_ARGS[@]}" "$prompt"
     fi
 
-    printf 'launch-agent.sh: codex not found, staying in interactive shell inside %s\n' "$WORKTREE_ROOT" >&2
+    if command -v claude >/dev/null 2>&1; then
+        append_launch_log "starting claude agent args_count=${#CLAUDE_GLOBAL_ARGS[@]} worktree=$WORKTREE_ROOT"
+        exec claude "${CLAUDE_GLOBAL_ARGS[@]}" "$prompt"
+    fi
+
+    append_launch_log "starting degraded shell fallback worktree=$WORKTREE_ROOT"
+    printf 'launch-agent.sh: no supported agent found, staying in interactive shell inside %s\n' "$WORKTREE_ROOT" >&2
     exec "${SHELL:-/bin/bash}" -l
 }
 

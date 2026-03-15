@@ -93,6 +93,8 @@ impl Config {
             "launch_agent.analysis_artifacts_dir_template must not be empty in {}",
             path.display()
         );
+        validate_global_args(path, "claude", &self.launch_agent.global_args.claude)?;
+        validate_global_args(path, "codex", &self.launch_agent.global_args.codex)?;
         anyhow::ensure!(
             !self
                 .launch_agent
@@ -197,12 +199,39 @@ pub struct LaunchAgentConfig {
     pub analysis_branch_template: String,
     pub worktree_root_template: String,
     pub analysis_artifacts_dir_template: String,
+    #[serde(default)]
+    pub global_args: LaunchAgentGlobalArgsConfig,
     #[serde(default = "default_implementation_branch_template")]
     pub implementation_branch_template: String,
     #[serde(default = "default_implementation_worktree_root_template")]
     pub implementation_worktree_root_template: String,
     #[serde(default = "default_implementation_artifacts_dir_template")]
     pub implementation_artifacts_dir_template: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LaunchAgentGlobalArgsConfig {
+    #[serde(default = "default_claude_global_args")]
+    pub claude: Vec<String>,
+    #[serde(default = "default_codex_global_args")]
+    pub codex: Vec<String>,
+}
+
+impl Default for LaunchAgentGlobalArgsConfig {
+    fn default() -> Self {
+        Self {
+            claude: default_claude_global_args(),
+            codex: default_codex_global_args(),
+        }
+    }
+}
+
+fn default_claude_global_args() -> Vec<String> {
+    vec!["--permission-mode".into(), "auto".into()]
+}
+
+fn default_codex_global_args() -> Vec<String> {
+    vec!["--full-auto".into()]
 }
 
 fn default_implementation_branch_template() -> String {
@@ -215,6 +244,17 @@ fn default_implementation_worktree_root_template() -> String {
 
 fn default_implementation_artifacts_dir_template() -> String {
     "specs/issues/${ISSUE_NUMBER}".into()
+}
+
+fn validate_global_args(path: &Path, agent_name: &str, args: &[String]) -> Result<()> {
+    for (index, arg) in args.iter().enumerate() {
+        anyhow::ensure!(
+            !arg.trim().is_empty(),
+            "launch_agent.global_args.{agent_name}[{index}] must not be blank in {}",
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -258,6 +298,12 @@ launch_agent:
   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
   worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+  global_args:
+    claude:
+      - "--permission-mode"
+      - "auto"
+    codex:
+      - "--full-auto"
   implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
   implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
   implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
@@ -280,6 +326,14 @@ launch_agent:
             Some("#${ISSUE_NUMBER}")
         );
         assert_eq!(config.zellij.layout.as_deref(), Some("custom-layout"));
+        assert_eq!(
+            config.launch_agent.global_args.codex,
+            vec!["--full-auto".to_string()]
+        );
+        assert_eq!(
+            config.launch_agent.global_args.claude,
+            vec!["--permission-mode".to_string(), "auto".to_string()]
+        );
     }
 
     #[test]
@@ -333,6 +387,34 @@ launch_agent:
             config.launch_agent.implementation_branch_template,
             "implementation/issue-${ISSUE_NUMBER}"
         );
+        assert_eq!(
+            config.launch_agent.global_args.codex,
+            vec!["--full-auto".to_string()]
+        );
+        assert_eq!(
+            config.launch_agent.global_args.claude,
+            vec!["--permission-mode".to_string(), "auto".to_string()]
+        );
+    }
+
+    #[test]
+    fn allows_overriding_agent_global_args() {
+        let yaml = sample_config().replace(
+            "  global_args:\n    claude:\n      - \"--permission-mode\"\n      - \"auto\"\n    codex:\n      - \"--full-auto\"\n",
+            "  global_args:\n    claude:\n      - \"--dangerously-skip-permissions\"\n    codex:\n      - \"--sandbox\"\n      - \"workspace-write\"\n",
+        );
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        let config: Config = serde_yaml::from_str(&yaml).expect("yaml should parse");
+        config.validate(&path).expect("config should validate");
+
+        assert_eq!(
+            config.launch_agent.global_args.claude,
+            vec!["--dangerously-skip-permissions".to_string()]
+        );
+        assert_eq!(
+            config.launch_agent.global_args.codex,
+            vec!["--sandbox".to_string(), "workspace-write".to_string()]
+        );
     }
 
     #[test]
@@ -369,5 +451,18 @@ launch_agent:
         let config: Config = serde_yaml::from_str(&yaml).expect("yaml should parse");
         let error = config.validate(&path).expect_err("validation should fail");
         assert!(error.to_string().contains("zellij.layout"));
+    }
+
+    #[test]
+    fn rejects_blank_global_args() {
+        let yaml = sample_config().replace("\"--full-auto\"", "\"   \"");
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        let config: Config = serde_yaml::from_str(&yaml).expect("yaml should parse");
+        let error = config.validate(&path).expect_err("validation should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("launch_agent.global_args.codex[0]")
+        );
     }
 }

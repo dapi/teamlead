@@ -23,6 +23,9 @@
 - analysis tab использует versioned tab-layout contract и не выглядит как bare
   technical tab, если project-local contract ожидает bar/plugins и другой UX
 - после запуска pane в runtime state записывается `pane_id`
+- launcher передает canonical default args в `codex` и `claude`, если repo не
+  задал override
+- launcher не смешивает `codex` args и `claude` args между ветками запуска
 
 ## Критерии готовности
 
@@ -52,6 +55,8 @@ Feature считается готовой, если:
 - `pane_id` является runtime-only значением
 - runtime не генерирует отдельный launcher-script для pane
 - shared multi-repo existing session запрещена
+- agent global args передаются через shell-safe array contract, а не через raw
+  shell string
 
 ## Сценарии проверки
 
@@ -138,8 +143,28 @@ Feature считается готовой, если:
 
 - launcher подготовил analysis worktree
 - `codex` отсутствует в окружении
-- launcher не теряет подготовленный контекст
-- пользователь получает shell внутри analysis worktree
+- если `claude` доступен, launcher запускает `claude` с canonical или
+  пользовательскими `claude` args
+- если `claude` тоже отсутствует, launcher не теряет подготовленный контекст и
+  оставляет пользователя в shell внутри analysis worktree
+
+### Сценарий 12. Canonical `codex` defaults
+
+- `run` или `poll` запускает analysis stage
+- repo не задает override для `launch_agent.global_args.codex`
+- `codex` получает `--full-auto`
+
+### Сценарий 13. Canonical `claude` defaults
+
+- `codex` отсутствует в окружении
+- repo не задает override для `launch_agent.global_args.claude`
+- `claude` получает `--permission-mode auto`
+
+### Сценарий 14. Пользовательский override для `codex`
+
+- repo задает `launch_agent.global_args.codex`
+- launcher использует пользовательский список args
+- canonical default `--full-auto` не дублируется поверх override
 
 ## Диагностика и наблюдаемость
 

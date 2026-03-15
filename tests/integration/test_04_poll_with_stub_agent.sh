@@ -39,10 +39,17 @@ if ! wait_for_file "$SESSION_MANIFEST"; then
     return 0
 fi
 
-wait_for_file "$STUB_OUT/issue_url" 30 || true
+LAUNCH_LOG="$REPO_ROOT/.git/.ai-teamlead/sessions/$SESSION_UUID/launch.log"
+wait_for_file "$STUB_OUT/codex.invoked" 60 || true
+wait_for_file "$STUB_OUT/issue_url" 60 || true
+if [[ ! -f "$STUB_OUT/issue_url" && -f "$LAUNCH_LOG" ]]; then
+    echo "  DIAG: poll launch log"
+    sed 's/^/    /' "$LAUNCH_LOG"
+fi
 
 assert_file_exists "$ISSUE_INDEX" "poll created issue index for first matching backlog issue"
 assert_file_exists "$SESSION_MANIFEST" "poll created session manifest"
+assert_file_exists "$STUB_OUT/codex.invoked" "poll started stub agent for top backlog issue"
 assert_eq "$(cat "$STUB_OUT/issue_url")" "https://github.com/dapi/example/issues/7" "poll launched stub agent for top backlog issue"
 assert_file_contains "$GH_LOG" "itemId=ITEM-7" "poll updated status for first matching backlog item"
 

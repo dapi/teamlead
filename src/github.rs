@@ -161,6 +161,95 @@ impl<'a> GhProjectClient<'a> {
         )?;
         Ok(())
     }
+
+    pub fn load_repo_issue(
+        &self,
+        cwd: &Path,
+        owner: &str,
+        repo: &str,
+        issue_number: u64,
+    ) -> Result<Option<RepoIssue>> {
+        let query = r#"query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      id
+      number
+      state
+      url
+    }
+  }
+}"#;
+
+        let stdout = self.shell.run(
+            cwd,
+            "gh",
+            &[
+                "api",
+                "graphql",
+                "-f",
+                &format!("query={query}"),
+                "-F",
+                &format!("owner={owner}"),
+                "-F",
+                &format!("repo={repo}"),
+                "-F",
+                &format!("number={issue_number}"),
+            ],
+        )?;
+
+        let response: GraphQlResponse<RepositoryIssueData> =
+            serde_json::from_str(&stdout).context("failed to parse repo issue response")?;
+
+        Ok(response
+            .data
+            .repository
+            .and_then(|repository| repository.issue)
+            .map(|issue| RepoIssue {
+                id: issue.id,
+                number: issue.number,
+                state: issue.state,
+                url: issue.url,
+            }))
+    }
+
+    pub fn add_issue_to_project(
+        &self,
+        cwd: &Path,
+        project_id: &str,
+        content_id: &str,
+    ) -> Result<String> {
+        let query = r#"mutation($projectId: ID!, $contentId: ID!) {
+  addProjectV2ItemById(input: { projectId: $projectId, contentId: $contentId }) {
+    item {
+      id
+    }
+  }
+}"#;
+
+        let stdout = self.shell.run(
+            cwd,
+            "gh",
+            &[
+                "api",
+                "graphql",
+                "-f",
+                &format!("query={query}"),
+                "-F",
+                &format!("projectId={project_id}"),
+                "-F",
+                &format!("contentId={content_id}"),
+            ],
+        )?;
+
+        let response: GraphQlResponse<AddProjectItemData> =
+            serde_json::from_str(&stdout).context("failed to parse add project item response")?;
+
+        response
+            .data
+            .add_project_item
+            .map(|payload| payload.item.id)
+            .ok_or_else(|| anyhow!("project item was not returned after addProjectV2ItemById"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -196,6 +285,14 @@ impl ProjectIssueItem {
     pub fn matches_repo(&self, owner: &str, repo: &str) -> bool {
         self.repo_owner == owner && self.repo_name == repo
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepoIssue {
+    pub id: String,
+    pub number: u64,
+    pub state: String,
+    pub url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -264,6 +361,40 @@ struct ProjectIssueRepository {
 #[derive(Debug, Deserialize)]
 struct ProjectIssueOwner {
     login: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RepositoryIssueData {
+    repository: Option<RepositoryIssueNode>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RepositoryIssueNode {
+    issue: Option<RepositoryIssue>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RepositoryIssue {
+    id: String,
+    number: u64,
+    state: String,
+    url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddProjectItemData {
+    #[serde(rename = "addProjectV2ItemById")]
+    add_project_item: Option<AddProjectItemPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddProjectItemPayload {
+    item: AddProjectItem,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddProjectItem {
+    id: String,
 }
 
 #[cfg(test)]
@@ -397,5 +528,89 @@ mod tests {
             .option_id_by_name("Backlog")
             .expect_err("missing option should fail");
         assert!(error.to_string().contains("Backlog"));
+    }
+
+    #[test]
+    fn parses_repo_issue_lookup() {
+        let query = r#"query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      id
+      number
+      state
+      url
+    }
+  }
+}"#;
+        let shell = FakeShell::default().with_response(
+            &format!(
+                "gh api graphql -f query={query} -F owner=dapi -F repo=teamlead -F number={}",
+                42
+            ),
+            r#"{"data":{"repository":{"issue":{"id":"ISSUE_42","number":42,"state":"OPEN","url":"https://github.com/dapi/teamlead/issues/42"}}}}"#,
+        );
+
+        let client = GhProjectClient::new(&shell);
+        let issue = client
+            .load_repo_issue(&PathBuf::from("/repo"), "dapi", "teamlead", 42)
+            .expect("repo issue should parse")
+            .expect("issue should exist");
+
+        assert_eq!(issue.id, "ISSUE_42");
+        assert_eq!(issue.state, "OPEN");
+        assert_eq!(issue.url, "https://github.com/dapi/teamlead/issues/42");
+    }
+
+    #[test]
+    fn returns_none_for_missing_repo_issue() {
+        let query = r#"query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      id
+      number
+      state
+      url
+    }
+  }
+}"#;
+        let shell = FakeShell::default().with_response(
+            &format!(
+                "gh api graphql -f query={query} -F owner=dapi -F repo=teamlead -F number={}",
+                404
+            ),
+            r#"{"data":{"repository":{"issue":null}}}"#,
+        );
+
+        let client = GhProjectClient::new(&shell);
+        let issue = client
+            .load_repo_issue(&PathBuf::from("/repo"), "dapi", "teamlead", 404)
+            .expect("repo issue lookup should parse");
+
+        assert!(issue.is_none());
+    }
+
+    #[test]
+    fn parses_project_item_id_from_add_issue_response() {
+        let query = r#"mutation($projectId: ID!, $contentId: ID!) {
+  addProjectV2ItemById(input: { projectId: $projectId, contentId: $contentId }) {
+    item {
+      id
+    }
+  }
+}"#;
+        let shell = FakeShell::default().with_response(
+            &format!(
+                "gh api graphql -f query={query} -F projectId=PVT_project -F contentId={}",
+                "ISSUE_42"
+            ),
+            r#"{"data":{"addProjectV2ItemById":{"item":{"id":"ITEM_42"}}}}"#,
+        );
+
+        let client = GhProjectClient::new(&shell);
+        let item_id = client
+            .add_issue_to_project(&PathBuf::from("/repo"), "PVT_project", "ISSUE_42")
+            .expect("project add should parse");
+
+        assert_eq!(item_id, "ITEM_42");
     }
 }

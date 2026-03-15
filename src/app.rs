@@ -10,9 +10,11 @@ use crate::cli::{Cli, Command, InternalCommand};
 use crate::complete_stage::run_complete_stage;
 use crate::config::Config;
 use crate::domain::{
-    FlowStage, decide_run_stage, parse_issue_ref, select_next_backlog_project_item,
+    FlowStage, allowed_run_statuses, decide_run_stage, format_closed_issue_message,
+    format_missing_issue_message, format_project_attachment_failure_message,
+    format_run_denied_message, parse_issue_ref, select_next_backlog_project_item,
 };
-use crate::github::{GhProjectClient, ProjectIssueItem, ProjectSnapshot};
+use crate::github::{GhProjectClient, ProjectIssueItem, ProjectSnapshot, RepoIssue};
 use crate::init::init_project_files;
 use crate::project_files::ProjectPaths;
 use crate::repo::RepoContext;
@@ -177,23 +179,136 @@ fn run_manual_run(
     let issue_number = parse_issue_ref(issue_ref)
         .with_context(|| format!("failed to parse issue reference: {issue_ref}"))?;
 
-    let issue = snapshot
-        .items
-        .iter()
-        .find(|item| {
-            item.issue_number == issue_number
-                && item.matches_repo(&context.repo.github_owner, &context.repo.github_repo)
-        })
-        .ok_or_else(|| anyhow::anyhow!("issue #{issue_number} is not linked to the project"))?;
+    let issue = prepare_manual_run_issue(&context, &github, &snapshot, issue_number)?;
 
     let launch_zellij = resolve_launch_zellij_config(&context.config.zellij, issue.issue_number)?;
-    let launch = run_issue_entrypoint(&context, &github, &zellij, &snapshot, issue, debug)?;
+    let launch = run_issue_entrypoint(&context, &github, &zellij, &snapshot, &issue, debug)?;
     println!(
         "run: issue=#{} launched in zellij session_uuid={}",
         launch.issue_number, launch.session_uuid
     );
     print_zellij_launch_target(&context.runtime, &launch.session_uuid, &launch_zellij);
     Ok(())
+}
+
+fn prepare_manual_run_issue(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+    snapshot: &ProjectSnapshot,
+    issue_number: u64,
+) -> Result<ProjectIssueItem> {
+    let repo_issue = github
+        .load_repo_issue(
+            &context.repo.repo_root,
+            &context.repo.github_owner,
+            &context.repo.github_repo,
+            issue_number,
+        )?
+        .ok_or_else(|| {
+            anyhow!(
+                "{}",
+                format_missing_issue_message(
+                    issue_number,
+                    &context.repo.github_owner,
+                    &context.repo.github_repo
+                )
+            )
+        })?;
+
+    anyhow::ensure!(
+        repo_issue.state == "OPEN",
+        "{}",
+        format_closed_issue_message(issue_number, &repo_issue.state, &repo_issue.url)
+    );
+
+    if let Some(issue) = snapshot.items.iter().find(|item| {
+        item.issue_number == issue_number
+            && item.matches_repo(&context.repo.github_owner, &context.repo.github_repo)
+    }) {
+        return ensure_issue_has_run_entry_status(context, github, snapshot, issue.clone());
+    }
+
+    attach_issue_to_project(context, github, snapshot, &repo_issue)
+}
+
+fn ensure_issue_has_run_entry_status(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+    snapshot: &ProjectSnapshot,
+    mut issue: ProjectIssueItem,
+) -> Result<ProjectIssueItem> {
+    if issue.status_name.is_some() {
+        return Ok(issue);
+    }
+
+    let backlog_status = context.config.issue_analysis_flow.statuses.backlog.as_str();
+    let backlog_option = snapshot.option_id_by_name(backlog_status)?;
+    github.update_status(
+        &context.repo.repo_root,
+        &context.config.github.project_id,
+        &issue.item_id,
+        &snapshot.status_field_id,
+        backlog_option,
+    )?;
+    println!(
+        "run: issue #{} did not have a project status; automatically set status to {}",
+        issue.issue_number, backlog_status
+    );
+    issue.status_name = Some(backlog_status.to_string());
+    issue.status_option_id = Some(backlog_option.to_string());
+    Ok(issue)
+}
+
+fn attach_issue_to_project(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+    snapshot: &ProjectSnapshot,
+    repo_issue: &RepoIssue,
+) -> Result<ProjectIssueItem> {
+    let backlog_status = context.config.issue_analysis_flow.statuses.backlog.as_str();
+    let backlog_option = snapshot.option_id_by_name(backlog_status)?;
+    let item_id = github
+        .add_issue_to_project(
+            &context.repo.repo_root,
+            &context.config.github.project_id,
+            &repo_issue.id,
+        )
+        .with_context(|| {
+            format_project_attachment_failure_message(
+                repo_issue.number,
+                &context.config.github.project_id,
+                &repo_issue.url,
+            )
+        })?;
+    github
+        .update_status(
+            &context.repo.repo_root,
+            &context.config.github.project_id,
+            &item_id,
+            &snapshot.status_field_id,
+            backlog_option,
+        )
+        .with_context(|| {
+            format_project_attachment_failure_message(
+                repo_issue.number,
+                &context.config.github.project_id,
+                &repo_issue.url,
+            )
+        })?;
+    println!(
+        "run: issue #{} was automatically added to project {} with status {}",
+        repo_issue.number, context.config.github.project_id, backlog_status
+    );
+
+    Ok(ProjectIssueItem {
+        item_id,
+        issue_number: repo_issue.number,
+        issue_state: repo_issue.state.clone(),
+        repo_owner: context.repo.github_owner.clone(),
+        repo_name: context.repo.github_repo.clone(),
+        status_name: Some(backlog_status.to_string()),
+        status_option_id: Some(backlog_option.to_string()),
+    })
 }
 
 fn run_issue_entrypoint(
@@ -217,10 +332,13 @@ fn run_issue_entrypoint(
         &context.config.issue_implementation_flow.statuses,
     );
     if !decision.allowed {
+        let allowed_statuses = allowed_run_statuses(
+            &context.config.issue_analysis_flow.statuses,
+            &context.config.issue_implementation_flow.statuses,
+        );
         bail!(
-            "run denied for issue #{}: {}",
-            issue.issue_number,
-            decision.reason
+            "{}",
+            format_run_denied_message(issue.issue_number, current_status, &allowed_statuses)
         );
     }
     let stage = decision

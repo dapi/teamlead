@@ -10,6 +10,7 @@ RUN apt-get update \
        curl \
        git \
        jq \
+       libatomic1 \
        util-linux \
     && curl -fsSL "https://github.com/dapi/zellij-main/releases/download/${ZELLIJ_TAG}/zellij" \
        -o /tmp/zellij \

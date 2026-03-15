@@ -10,8 +10,21 @@ GH_SNAPSHOT="$(mktemp /tmp/ai-teamlead-run-priority-gh-snapshot-XXXXXX)"
 ENV_SESSION="outer-session-$$"
 ARG_SESSION="cli-session-$$"
 TARGET_LAYOUT="$(mktemp /tmp/ai-teamlead-priority-layout-XXXXXX.kdl)"
+WORKTREE_BASE="$(mktemp -d /tmp/ai-teamlead-run-priority-worktrees-XXXXXX)"
+OCCUPIED_WORKTREE_ROOT="${WORKTREE_BASE}/analysis/issue-42"
+FOREIGN_REPO="$(mktemp -d /tmp/ai-teamlead-run-priority-foreign-XXXXXX)"
 
 create_initialized_repo "$REPO_ROOT" "$AI_TEAMLEAD_BIN"
+perl -0pi -e "s|\\$\\{HOME\\}/worktrees/\\$\\{REPO\\}/\\$\\{BRANCH\\}|${WORKTREE_BASE}/\\\${BRANCH}|g" \
+    "$REPO_ROOT/.ai-teamlead/settings.yml"
+git init -q -b main "$FOREIGN_REPO"
+git -C "$FOREIGN_REPO" config user.name "AI Teamlead Foreign Fixture"
+git -C "$FOREIGN_REPO" config user.email "ai-teamlead-foreign@example.com"
+printf '# foreign fixture\n' > "$FOREIGN_REPO/README.md"
+git -C "$FOREIGN_REPO" add README.md
+git -C "$FOREIGN_REPO" commit -q -m "initial"
+mkdir -p "$(dirname "$OCCUPIED_WORKTREE_ROOT")"
+git -C "$FOREIGN_REPO" worktree add -b analysis/issue-42 "$OCCUPIED_WORKTREE_ROOT" main >/dev/null
 
 cat > "$GH_SNAPSHOT" <<'EOF'
 {"data":{"node":{"id":"PVT_test_project","title":"Test Project","field":{"id":"STATUS_FIELD","options":[{"id":"OPT_BACKLOG","name":"Backlog"},{"id":"OPT_ANALYSIS","name":"Analysis In Progress"},{"id":"OPT_CLARIFY","name":"Waiting for Clarification"},{"id":"OPT_PLAN","name":"Waiting for Plan Review"},{"id":"OPT_READY","name":"Ready for Implementation"},{"id":"OPT_BLOCKED","name":"Analysis Blocked"}]},"items":{"nodes":[{"id":"ITEM-42","fieldValueByName":{"name":"Backlog","optionId":"OPT_BACKLOG"},"content":{"number":42,"state":"OPEN","repository":{"name":"example","owner":{"login":"dapi"}}}}]}}}}
@@ -63,11 +76,28 @@ fi
 
 SESSION_NAME="$(jq -r '.zellij.session_name' "$SESSION_MANIFEST")"
 PANE_ID="$(wait_for_json_field_not_value "$SESSION_MANIFEST" '.zellij.pane_id' 'pending' 30 || true)"
+if ! wait_for_file "$STUB_OUT/worktree_root" 30; then
+    echo "  FAIL: run recorded worktree root for launched agent"
+    ((FAIL++)) || true
+    ACTUAL_WORKTREE_ROOT=""
+else
+    ACTUAL_WORKTREE_ROOT="$(cat "$STUB_OUT/worktree_root")"
+fi
 
 assert_eq "$SESSION_NAME" "$ARG_SESSION" "cli zellij session override beats env session"
 assert_ne "$PANE_ID" "" "cli override launch captured pane id"
 assert_session_alive "$ARG_SESSION" "cli override created requested zellij session"
 assert_text_contains "$RUN_OUTPUT" "zellij_session=$ARG_SESSION" "run printed cli-selected zellij session"
+assert_ne "$ACTUAL_WORKTREE_ROOT" "$OCCUPIED_WORKTREE_ROOT" "run avoids occupied foreign worktree path"
+if [[ -n "$ACTUAL_WORKTREE_ROOT" && "$ACTUAL_WORKTREE_ROOT" == "$OCCUPIED_WORKTREE_ROOT"-* ]]; then
+    echo "  PASS: run uses deterministic fallback worktree root"
+    ((PASS++)) || true
+else
+    echo "  FAIL: run uses deterministic fallback worktree root"
+    echo "    expected prefix: ${OCCUPIED_WORKTREE_ROOT}-"
+    echo "    actual:          $ACTUAL_WORKTREE_ROOT"
+    ((FAIL++)) || true
+fi
 
 kill "$TARGET_PID" 2>/dev/null || true
 wait "$TARGET_PID" 2>/dev/null || true

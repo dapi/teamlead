@@ -49,6 +49,7 @@ session/tab.
 - [../../adr/0008-bind-issue-to-agent-session-uuid.md](../../adr/0008-bind-issue-to-agent-session-uuid.md)
 - [../../adr/0014-zellij-launch-context-naming.md](../../adr/0014-zellij-launch-context-naming.md)
 - [../../adr/0022-zellij-layout-contract-for-new-sessions.md](../../adr/0022-zellij-layout-contract-for-new-sessions.md)
+- [../../adr/0028-zellij-launch-target-pane-tab.md](../../adr/0028-zellij-launch-target-pane-tab.md)
 
 ## Открытые вопросы
 

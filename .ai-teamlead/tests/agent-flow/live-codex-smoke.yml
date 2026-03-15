@@ -1,0 +1,11 @@
+name: live-codex-smoke
+description: Локальный smoke-сценарий для live `codex` через тот же sandbox path
+mode: live
+agent: codex
+fixtures:
+  github_stub: basic-backlog.json
+commands:
+  - ai-teamlead run https://github.com/dapi/ai-teamlead/issues/38
+assertions:
+  - type: issue_status
+    equals: Waiting for Plan Review

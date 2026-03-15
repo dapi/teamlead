@@ -15,11 +15,14 @@
   `args -> env -> settings`
 - `ai-teamlead` корректно находит или создает `zellij` session по effective
   target session
+- `run` корректно выбирает launch target по правилу
+  `CLI -> settings -> runtime default`
+- `poll` и `loop` не экспонируют public override по launch target
 - при `session missing` launcher корректно различает path `custom layout` и
   `default fallback`
-- `ai-teamlead` корректно находит или создает tab по `tab_name`
+- `ai-teamlead` корректно разделяет `pane` и `tab` launcher paths
 - если задан `zellij.tab_name_template`, launcher использует issue-aware
-  effective tab name и сохраняет его в runtime metadata
+  effective tab name только в `tab`-режиме и сохраняет его в runtime metadata
 - analysis tab использует versioned tab-layout contract и не выглядит как bare
   technical tab, если project-local contract ожидает bar/plugins и другой UX
 - после запуска pane в runtime state записывается `pane_id`
@@ -44,6 +47,8 @@ Feature считается готовой, если:
 - `zellij.session_name` является versioned fallback, а не единственным
   источником target session
 - `zellij.tab_name` является stable semantic name
+- `zellij.launch_target` влияет только на способ открытия launch context внутри
+  уже выбранной session
 - `zellij.tab_name_template` является optional issue-aware template для
   tab-launch path и не подменяет stable role `zellij.tab_name`
 - generated `launch-layout.kdl` отвечает за analysis tab, а не за базовую
@@ -70,9 +75,15 @@ Feature считается готовой, если:
 
 ### Сценарий 2. Session уже существует
 
+- запускается `run` в `pane`-режиме
+- используется существующая session
+- в shared tab открывается новая pane
+
+### Сценарий 2a. Existing session в `tab`-режиме
+
 - запускается `run`
 - используется существующая session
-- в нужном tab открывается новая pane
+- создается новый analysis tab
 
 ### Сценарий 2a. Новая session с `zellij.layout`
 
@@ -123,7 +134,7 @@ Feature считается готовой, если:
 
 - launcher обнаруживает неоднозначный tab context
 - запуск завершается ошибкой
-- issue не должна silently уходить в непредсказуемый pane
+- issue не должна silently уходить в непредсказуемый pane или duplicate tab
 
 ### Сценарий 9. Launcher-script подготавливает analysis worktree
 
@@ -171,6 +182,7 @@ Feature считается готовой, если:
 Минимально необходимо видеть:
 
 - какой effective `session_name` ожидался
+- какой effective `launch_target` ожидался
 - какой effective `tab_name` ожидался
 - существовала ли session до запуска
 - был ли создан новый tab

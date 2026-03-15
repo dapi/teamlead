@@ -89,6 +89,91 @@ EOF
     fi
 }
 
+run_claude_override_scenario() {
+    local repo_root worktree_base stub_bin stub_out gh_log gh_snapshot run_output
+    repo_root="$(mktemp -d /tmp/ai-teamlead-claude-override-XXXXXX)"
+    worktree_base="$(mktemp -d /tmp/ai-teamlead-claude-override-worktrees-XXXXXX)"
+    stub_bin="$(mktemp -d /tmp/ai-teamlead-claude-override-bin-XXXXXX)"
+    stub_out="$(mktemp -d /tmp/ai-teamlead-claude-override-out-XXXXXX)"
+    gh_log="$(mktemp /tmp/ai-teamlead-claude-override-gh-log-XXXXXX)"
+    gh_snapshot="$(mktemp /tmp/ai-teamlead-claude-override-gh-snapshot-XXXXXX)"
+
+    create_initialized_repo "$repo_root" "$AI_TEAMLEAD_BIN"
+    cat > "$repo_root/.ai-teamlead/settings.yml" <<EOF
+github:
+  project_id: "PVT_test_project"
+
+issue_analysis_flow:
+  statuses:
+    backlog: "Backlog"
+    analysis_in_progress: "Analysis In Progress"
+    waiting_for_clarification: "Waiting for Clarification"
+    waiting_for_plan_review: "Waiting for Plan Review"
+    ready_for_implementation: "Ready for Implementation"
+    analysis_blocked: "Analysis Blocked"
+
+issue_implementation_flow:
+  statuses:
+    ready_for_implementation: "Ready for Implementation"
+    implementation_in_progress: "Implementation In Progress"
+    waiting_for_ci: "Waiting for CI"
+    waiting_for_code_review: "Waiting for Code Review"
+    implementation_blocked: "Implementation Blocked"
+
+runtime:
+  max_parallel: 1
+  poll_interval_seconds: 3600
+
+zellij:
+  session_name: "\${REPO}"
+  tab_name: "issue-analysis"
+
+launch_agent:
+  analysis_branch_template: "analysis/issue-\${ISSUE_NUMBER}"
+  worktree_root_template: "${worktree_base}/\${BRANCH}"
+  analysis_artifacts_dir_template: "specs/issues/\${ISSUE_NUMBER}"
+  global_args:
+    claude:
+      - "--dangerously-skip-permissions"
+    codex:
+      - "--full-auto"
+  implementation_branch_template: "implementation/issue-\${ISSUE_NUMBER}"
+  implementation_worktree_root_template: "${worktree_base}/\${BRANCH}"
+  implementation_artifacts_dir_template: "specs/issues/\${ISSUE_NUMBER}"
+EOF
+
+    cat > "$gh_snapshot" <<'EOF'
+{"data":{"node":{"id":"PVT_test_project","title":"Test Project","field":{"id":"STATUS_FIELD","options":[{"id":"OPT_BACKLOG","name":"Backlog"},{"id":"OPT_ANALYSIS","name":"Analysis In Progress"},{"id":"OPT_CLARIFY","name":"Waiting for Clarification"},{"id":"OPT_PLAN","name":"Waiting for Plan Review"},{"id":"OPT_READY","name":"Ready for Implementation"},{"id":"OPT_BLOCKED","name":"Analysis Blocked"}]},"items":{"nodes":[{"id":"ITEM-42","fieldValueByName":{"name":"Backlog","optionId":"OPT_BACKLOG"},"content":{"number":42,"state":"OPEN","repository":{"name":"example","owner":{"login":"dapi"}}}}]}}}}
+EOF
+
+    install_gh_stub "$stub_bin" "$gh_snapshot" "$gh_log"
+    install_agent_stubs "$stub_bin" "$stub_out"
+    rm -f "$stub_bin/codex"
+    export PATH="$stub_bin:$BASE_TEST_PATH"
+    export AI_TEAMLEAD_STUB_AGENT_SLEEP=2
+
+    if ! run_output="$(
+        cd "$repo_root"
+        AI_TEAMLEAD_AGENT_BIN="$stub_bin/claude" \
+        AI_TEAMLEAD_AGENT_KIND="claude" \
+        "$AI_TEAMLEAD_BIN" run -d 42 2>&1
+    )"; then
+        printf '%s\n' "$run_output"
+        return 1
+    fi
+
+    wait_for_file "$stub_out/claude.invoked" 30 || true
+    assert_file_exists "$stub_out/claude.invoked" "claude override scenario invoked claude"
+    assert_file_contains "$stub_out/claude.args" "--dangerously-skip-permissions" "claude override scenario passes configured args"
+    if [[ -f "$stub_out/claude.args" ]] && grep -Fxq -- "--permission-mode" "$stub_out/claude.args"; then
+        echo "  FAIL: claude override scenario must not force default permission mode"
+        ((FAIL++)) || true
+    else
+        echo "  PASS: claude override scenario does not force default permission mode"
+        ((PASS++)) || true
+    fi
+}
+
 run_claude_default_scenario() {
     local repo_root worktree_base stub_bin stub_out gh_log gh_snapshot run_output
     repo_root="$(mktemp -d /tmp/ai-teamlead-claude-default-XXXXXX)"
@@ -237,6 +322,8 @@ EOF
 }
 
 run_codex_override_scenario
+cleanup_zellij
+run_claude_override_scenario
 cleanup_zellij
 run_claude_default_scenario
 cleanup_zellij

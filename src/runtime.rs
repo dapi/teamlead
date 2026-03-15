@@ -5,7 +5,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::config::ZellijConfig;
+use crate::config::{LaunchTarget, ZellijConfig};
 use crate::domain::FlowStage;
 use crate::repo::RepoContext;
 
@@ -63,9 +63,13 @@ impl RuntimeLayout {
             status: "active".to_string(),
             created_at: timestamp.clone(),
             updated_at: timestamp.clone(),
+            stage_branch: None,
+            stage_worktree_root: None,
+            stage_artifacts_dir: None,
             zellij: ZellijBinding {
                 session_name: zellij.session_name.clone(),
                 tab_name: zellij.tab_name.clone(),
+                launch_target: zellij.launch_target,
                 session_id: "pending".to_string(),
                 tab_id: "pending".to_string(),
                 pane_id: "pending".to_string(),
@@ -146,10 +150,30 @@ impl RuntimeLayout {
         Ok(manifest)
     }
 
+    pub fn update_stage_workspace(
+        &self,
+        session_uuid: &str,
+        branch: &str,
+        worktree_root: &Path,
+        artifacts_dir: &str,
+    ) -> Result<SessionManifest> {
+        let mut manifest = self
+            .load_session_manifest(session_uuid)?
+            .ok_or_else(|| anyhow!("missing session manifest for session_uuid={session_uuid}"))?;
+        manifest.updated_at = Utc::now().to_rfc3339();
+        manifest.stage_branch = Some(branch.to_string());
+        manifest.stage_worktree_root = Some(worktree_root.to_path_buf());
+        manifest.stage_artifacts_dir = Some(artifacts_dir.to_string());
+
+        let session_path = self.sessions_dir.join(session_uuid).join("session.json");
+        write_json_pretty(session_path, &manifest)?;
+        Ok(manifest)
+    }
+
     pub fn update_issue_flow_status(&self, issue_number: u64, flow_status: &str) -> Result<()> {
-        let mut index = self
-            .load_issue_index(issue_number)?
-            .ok_or_else(|| anyhow!("missing issue session index for issue #{issue_number}"))?;
+        let Some(mut index) = self.load_issue_index(issue_number)? else {
+            return Ok(());
+        };
         index.last_known_flow_status = flow_status.to_string();
         index.updated_at = Utc::now().to_rfc3339();
         index.legacy_session_uuid = None;
@@ -189,6 +213,12 @@ pub struct SessionManifest {
     pub status: String,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage_worktree_root: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage_artifacts_dir: Option<String>,
     pub zellij: ZellijBinding,
 }
 
@@ -196,9 +226,15 @@ pub struct SessionManifest {
 pub struct ZellijBinding {
     pub session_name: String,
     pub tab_name: String,
+    #[serde(default = "default_runtime_launch_target")]
+    pub launch_target: LaunchTarget,
     pub session_id: String,
     pub tab_id: String,
     pub pane_id: String,
+}
+
+fn default_runtime_launch_target() -> LaunchTarget {
+    LaunchTarget::Tab
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -270,7 +306,7 @@ fn write_json_pretty<T: Serialize>(path: PathBuf, value: &T) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{RuntimeLayout, SessionManifest};
-    use crate::config::ZellijConfig;
+    use crate::config::{LaunchTarget, ZellijConfig};
     use crate::domain::FlowStage;
     use crate::repo::RepoContext;
     use std::path::Path;
@@ -310,6 +346,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Pane,
             tab_name_template: None,
             layout: None,
         };
@@ -362,6 +399,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Pane,
             tab_name_template: None,
             layout: None,
         };
@@ -405,6 +443,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Pane,
             tab_name_template: None,
             layout: None,
         };
@@ -432,6 +471,65 @@ mod tests {
             .expect("reload")
             .expect("manifest exists");
         assert_eq!(reloaded.status, "completed");
+    }
+
+    #[test]
+    fn stores_workspace_metadata() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        let git_dir = repo_root.join(".git");
+        std::fs::create_dir_all(&git_dir).expect("git dir");
+
+        let layout = RuntimeLayout::from_repo_root(&repo_root);
+        layout.ensure_exists().expect("runtime layout");
+
+        let repo = RepoContext {
+            repo_root: repo_root.clone(),
+            git_dir,
+            github_owner: "dapi".into(),
+            github_repo: "teamlead".into(),
+        };
+        let zellij = ZellijConfig {
+            session_name: "ai-teamlead".into(),
+            tab_name: "issue-analysis".into(),
+            launch_target: crate::config::LaunchTarget::Pane,
+            tab_name_template: None,
+            layout: None,
+        };
+
+        let manifest = layout
+            .create_claim_binding(
+                &repo,
+                "PVT_project",
+                &zellij,
+                42,
+                FlowStage::Implementation,
+                "Implementation In Progress",
+            )
+            .expect("claim binding");
+
+        let worktree_root = temp.path().join("worktrees/implementation/issue-42");
+        let updated = layout
+            .update_stage_workspace(
+                &manifest.session_uuid,
+                "implementation/issue-42",
+                &worktree_root,
+                "specs/issues/42",
+            )
+            .expect("workspace updated");
+
+        assert_eq!(
+            updated.stage_branch.as_deref(),
+            Some("implementation/issue-42")
+        );
+        assert_eq!(
+            updated.stage_worktree_root.as_deref(),
+            Some(worktree_root.as_path())
+        );
+        assert_eq!(
+            updated.stage_artifacts_dir.as_deref(),
+            Some("specs/issues/42")
+        );
     }
 
     #[test]
@@ -467,6 +565,52 @@ mod tests {
     }
 
     #[test]
+    fn loads_legacy_session_manifest_without_launch_target() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        let git_dir = repo_root.join(".git");
+        std::fs::create_dir_all(&git_dir).expect("git dir");
+
+        let layout = RuntimeLayout::from_repo_root(&repo_root);
+        layout.ensure_exists().expect("runtime layout");
+
+        let session_dir = layout.sessions_dir.join("legacy-session");
+        std::fs::create_dir_all(&session_dir).expect("session dir");
+        std::fs::write(
+            session_dir.join("session.json"),
+            format!(
+                r#"{{
+  "session_uuid": "legacy-session",
+  "issue_number": 42,
+  "repo_root": "{}",
+  "github_owner": "dapi",
+  "github_repo": "teamlead",
+  "project_id": "PVT_project",
+  "stage": "implementation",
+  "status": "completed",
+  "created_at": "2026-03-14T20:00:00Z",
+  "updated_at": "2026-03-14T20:00:00Z",
+  "zellij": {{
+    "session_name": "teamlead",
+    "tab_name": "issue-analysis",
+    "session_id": "pending",
+    "tab_id": "pending",
+    "pane_id": "pending"
+  }}
+}}"#,
+                repo_root.display()
+            ),
+        )
+        .expect("write legacy session manifest");
+
+        let manifest = layout
+            .load_session_manifest("legacy-session")
+            .expect("load")
+            .expect("manifest exists");
+        assert_eq!(manifest.zellij.launch_target, LaunchTarget::Tab);
+    }
+
+    #[test]
     fn preserves_existing_stage_bindings_when_claiming_new_stage() {
         let temp = tempdir().expect("temp dir");
         let repo_root = temp.path().join("repo");
@@ -485,6 +629,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Pane,
             tab_name_template: None,
             layout: None,
         };

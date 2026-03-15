@@ -25,7 +25,8 @@
 
 - `poll` или `run` выбирают issue
 - issue связывается с `session_uuid`
-- открывается новая pane в корректном `zellij` context
+- открывается новая pane в корректном `zellij` context, причем repo может
+  выбрать default mode между shared `pane` и отдельным `tab`
 - запускается versioned `./.ai-teamlead/launch-agent.sh`
 - именно `launch-agent.sh` делает branch/worktree/init/agent start
 - реальный агент стартует только после подготовки analysis worktree
@@ -39,6 +40,7 @@
 - единый launch path для `poll` и `run`
 - versioned `./.ai-teamlead/launch-agent.sh`
 - naming contract для `zellij.session_name` и `zellij.tab_name`
+- launch-target contract для `zellij.launch_target` и `run --launch-target`
 - session binding с сохранением `pane_id`
 - правила поведения при corner cases для session/tab
 - минимальный lifecycle вокруг analysis branch/worktree

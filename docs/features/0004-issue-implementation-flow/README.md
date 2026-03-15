@@ -2,7 +2,7 @@
 
 Статус: draft
 Владелец: владелец репозитория
-Последнее обновление: 2026-03-14
+Последнее обновление: 2026-03-15
 
 ## Контекст
 
@@ -42,16 +42,26 @@
 - [docs/adr/0024-stage-aware-run-dispatch.md](../../adr/0024-stage-aware-run-dispatch.md)
 - [docs/adr/0025-stage-aware-runtime-bindings.md](../../adr/0025-stage-aware-runtime-bindings.md)
 - [docs/adr/0026-stage-aware-complete-stage.md](../../adr/0026-stage-aware-complete-stage.md)
+- [docs/adr/0027-post-merge-implementation-lifecycle.md](../../adr/0027-post-merge-implementation-lifecycle.md)
+- [docs/adr/0028-github-first-reconcile-and-runtime-cache-only.md](../../adr/0028-github-first-reconcile-and-runtime-cache-only.md)
 
 ## Открытые вопросы
 
 - нужен ли отдельный implementation prompt для разных типов задач или в первой
   версии достаточно одного project-local prompt entrypoint;
 - должен ли перевод PR из draft в ready-for-review происходить внутри
-  finalization command или оставаться явным human gate.
+  finalization command или оставаться явным human gate;
+- потребуется ли в будущем отдельный post-merge flow для deploy/release path
+  поверх базового terminal status `Done`.
 
 ## Журнал изменений
 
 ### 2026-03-14
 
 - создана feature 0004 для `issue-implementation-flow`
+
+### 2026-03-15
+
+- принят
+  [ADR-0028](../../adr/0028-github-first-reconcile-and-runtime-cache-only.md)
+  и зафиксирован GitHub-first reconcile для implementation flow

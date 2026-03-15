@@ -140,7 +140,7 @@ else
     echo "  FAIL: complete-stage pushed analysis branch"
     ((FAIL++)) || true
 fi
-assert_file_contains "$GH_LOG" "gh pr list --head analysis/issue-43 --json number --jq length" "complete-stage checked for existing PR"
+assert_file_contains "$GH_LOG" "gh pr list --head analysis/issue-43 --json number,url" "complete-stage checked for existing PR"
 assert_file_contains "$GH_LOG" "gh pr create --draft --title analysis(#43): stub analysis ready" "complete-stage created draft PR"
 assert_file_contains "$GH_LOG" "itemId=ITEM-43" "complete-stage updated GitHub Project status"
 assert_file_contains "$STUB_OUT/complete-stage.stdout" "complete-stage: created draft PR: https://github.com/dapi/example/pull/99" "complete-stage reported created draft PR"

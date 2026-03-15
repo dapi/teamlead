@@ -69,5 +69,5 @@ assert_file_contains "$LAUNCH_LOG" "launch-agent: starting agent in $WORKTREE_RO
 assert_file_contains "$STUB_OUT/prompt.txt" "# issue-analysis-flow" "run injected issue-analysis flow into prompt"
 assert_file_contains "$STUB_OUT/prompt.txt" "Issue URL: https://github.com/dapi/example/issues/42" "run injected issue URL into prompt"
 assert_file_contains "$GH_LOG" "itemId=ITEM-42" "run updated project status for selected item"
-assert_text_contains "$RUN_OUTPUT" "launch target: zellij_session=" "run printed zellij launch target"
+assert_text_contains "$RUN_OUTPUT" "launch target: launch_target=tab zellij_session=" "run printed zellij launch target"
 assert_text_contains "$RUN_OUTPUT" "pane_id=" "run printed zellij pane id"

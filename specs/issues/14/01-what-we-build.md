@@ -2,31 +2,27 @@
 
 ## Problem
 
-Сейчас `poll` выбирает любую подходящую issue из `Backlog` по репозиторию,
-issue state и project status, но не учитывает assignee.
+Сейчас `poll` выбирает первую подходящую issue из `Backlog`, если совпадают:
 
-В результате инструмент не может опереться на ownership policy по assignee:
-оператор не может гарантировать, что автоматический выбор backlog-issue
-соответствует назначенному пользователю или явно выбранному режиму отбора.
+- репозиторий;
+- `issue_state == "OPEN"`;
+- project status = `Backlog`.
 
-Отдельно важно:
-
-- отсутствие параллельного выполнения `ai-teamlead` должно обеспечиваться
-  lock-механизмом и не является предметом этой задачи;
-- issue `#14` не должна переопределять этот инвариант и не должна
-  мотивироваться допущением о допустимых параллельных экземплярах.
+При этом assignee не учитывается. В общем GitHub Project это мешает закрепить
+ownership policy через назначение задач: один экземпляр `ai-teamlead` не может
+отбирать backlog только для своего пользователя.
 
 ## Who Is It For
 
-- оператор, который запускает свой экземпляр `ai-teamlead` в общем GitHub
+- оператор `ai-teamlead`, который запускает `poll` или `loop` в общем GitHub
   Project;
 - владелец репозитория, который настраивает repo-local `settings.yml`;
-- разработчик, который поддерживает poll-selection, GitHub snapshot и
-  bootstrap template.
+- разработчик, который поддерживает selection logic, GitHub snapshot и шаблон
+  bootstrap-конфига.
 
 ## Outcome
 
-Нужен repo-local контракт:
+Нужен optional repo-local контракт:
 
 ```yaml
 poll:
@@ -35,93 +31,73 @@ poll:
 
 Семантика результата:
 
-- если `poll.assignee_filter` не задан, effective value считается `"$me"`;
-- если значение равно `"$me"`, eligible считаются только issue, заасайненные
-  на текущего GitHub-пользователя;
-- если значение равно `"$all"`, фильтр по assignee явно отключается;
-- если значение равно `"$unassigned"`, eligible считаются только issue без
-  assignee;
-- если значение равно `"username"`, eligible считаются только issue,
-  заасайненные на указанного пользователя;
-- ручной `run` проверяет соответствие issue effective `assignee_filter`;
-- если `run` находит mismatch, он выводит warning и просит approve у
-  пользователя;
-- если `run` запущен с `--force`, warning остается, но approve не требуется;
-- `"$me"` резолвится один раз на старте процесса и затем переиспользуется в
-  течение жизни `poll` или `loop`.
+- если `poll.assignee_filter` не задан, `poll` сохраняет текущее поведение и не
+  фильтрует backlog по assignee;
+- если значение равно `"$me"`, `poll` выбирает только issue, где среди
+  assignees есть текущий GitHub-пользователь;
+- если значение равно `"username"`, `poll` выбирает только issue, где среди
+  assignees есть указанный пользователь;
+- `"$me"` резолвится через `gh api user --jq '.login'` один раз на старте
+  процесса и затем кэшируется на время жизни `poll` или `loop`;
+- `run` не зависит от `assignee_filter` и сохраняет текущее поведение.
 
 ## Scope
 
 В текущую задачу входит:
 
-- добавить в `settings.yml` documented comment-only секцию
-  `poll.assignee_filter`;
-- расширить snapshot GitHub Project списком assignee login-ов для issue;
-- фильтровать backlog-элементы по assignee только в selection path команд
-  `poll` и `loop`;
-- поддержать special values `"$me"`, `"$all"` и `"$unassigned"`;
-- добавить warning/approve semantics для `run` при несоответствии effective
-  filter и `--force` override;
-- пояснить в документации, что comment-only template показывает рекомендуемый
-  default и допустимые override-режимы, а не fully materialized active config;
-- покрыть новую семантику unit- и integration-тестами.
+- добавить в `Config` optional секцию `poll` с полем `assignee_filter`;
+- расширить `ProjectIssueItem` списком assignee login-ов;
+- запросить assignees в GraphQL snapshot `load_project_snapshot`;
+- добавить helper для resolve текущего GitHub-пользователя через `gh api user`;
+- фильтровать backlog-issue по assignee в selection path команд `poll` и
+  `loop`;
+- добавить в `templates/init/settings.yml` закомментированный пример
+  `poll.assignee_filter: "$me"`;
+- покрыть изменение unit- и integration-тестами.
 
 ## Non-Goals
 
 В текущую задачу не входит:
 
-- изменение project statuses, claim semantics или общего flow анализа;
+- изменение поведения ручного `run`;
+- введение новых специальных режимов вроде `"$all"` или `"$unassigned"`;
+- смена default policy на `"$me"` при отсутствии настройки;
+- поддержка фильтрации по нескольким usernames, teams или labels;
 - изменение детерминированного порядка среди уже eligible backlog-issue;
-- хранение resolved current user в persistent runtime-state;
-- поддержка более сложных правил фильтрации вроде нескольких usernames,
-  teams или labels;
-- ослабление отдельного инварианта single-instance execution через lock.
+- хранение resolved current user в persistent runtime-state.
 
 ## Constraints And Assumptions
 
-- source of truth для настройки остается repo-local `./.ai-teamlead/settings.yml`
-  по ADR-0001;
-- отсутствие active override должно трактоваться как effective default `"$me"`,
-  а не как отключенный фильтр;
-- special value `"$me"` опирается на активную GitHub-аутентификацию `gh`;
-- `"$all"` должен быть явным способом отключить assignee filtering;
-- `"$unassigned"` должен быть явным способом выбрать только issue без assignee;
-- если у issue несколько assignee, достаточно совпадения хотя бы одного login-а;
-- шаблон `settings.yml` должен оставаться comment-only documented template по
-  ADR-0027;
-- новая интерактивная семантика `run` зависит от более общего UX-слоя для
-  диагностики `run`, поэтому дальнейшая реализация задачи заблокирована issue
-  `#11`.
+- source of truth для настройки остается repo-local
+  `./.ai-teamlead/settings.yml`;
+- отсутствие `poll.assignee_filter` должно быть обратно совместимо с текущим
+  поведением;
+- если задано `"$me"`, нужен доступный `gh` CLI с валидной авторизацией;
+- если `gh api user` недоступен, ошибка должна проявляться на старте процесса,
+  а не после частичного `poll`-цикла;
+- issue без assignee не должны матчиться, если фильтр задан;
+- если у issue несколько assignees, достаточно совпадения хотя бы одного login;
+- `loop` должен переиспользовать тот же контракт фильтрации, потому что
+  является foreground loop поверх `poll`.
 
 ## User Story
 
-Как оператор GitHub Project, я хочу, чтобы `poll` по умолчанию забирал задачи,
-назначенные мне, но при этом владелец репозитория мог явно переключить режим на
-конкретного пользователя, все задачи или только unassigned, а `run` предупреждал
-о нарушении этой политики, чтобы автоматический и ручной запуск следовали одному
-и тому же ownership contract.
+Как оператор общего GitHub Project, я хочу ограничить `poll` задачами,
+назначенными текущему пользователю или конкретному login, чтобы автоматический
+отбор backlog не забирал чужие issue.
 
 ## Use Cases
 
-1. Владелец репозитория ничего не задает в active YAML, и `poll` использует
-   default `"$me"`, подхватывая только задачи текущего GitHub-пользователя.
-2. Владелец репозитория явно задает `poll.assignee_filter: "$all"`, и `poll`
-   снова рассматривает все backlog-issue без ограничения по assignee.
-3. Владелец репозитория задает `poll.assignee_filter: "$unassigned"`, и
-   `poll` подхватывает только backlog-issue без assignee.
-4. Владелец репозитория задает `poll.assignee_filter: "alice"`, и `poll`
-   подхватывает только issue, где среди assignees есть `alice`.
-5. Оператор запускает `run <issue>` для issue, которая не соответствует
-   effective filter: система показывает warning и требует approve, если не
-   передан `--force`.
+1. Владелец репозитория не задает `poll.assignee_filter`, и `poll` работает
+   ровно как сейчас, без фильтра по assignee.
+2. Владелец репозитория задает `poll.assignee_filter: "$me"`, и `poll`
+   подхватывает только backlog-issue текущего GitHub-пользователя.
+3. Владелец репозитория задает `poll.assignee_filter: "alice"`, и `poll`
+   подхватывает только backlog-issue, у которых среди assignees есть `alice`.
 
 ## Dependencies
 
-- данные GitHub Project snapshot должны включать assignee login-ы для issue;
-- доступный `gh` CLI с валидной авторизацией нужен для режима `"$me"`;
-- issue `#11` является hard blocker для дальнейшей разработки, потому что
-  review расширил scope `#14` интерактивным поведением `run`;
-- текущий общий `run`-path после выбора issue должен переиспользоваться и для
-  warning/approve semantics;
-- существующие integration test stubs для `poll` и шаблон `settings.yml`
-  требуют синхронного обновления.
+- GitHub Project snapshot должен возвращать assignee login-ы для issue;
+- `gh api user` нужен только для режима `"$me"`;
+- тестовые stubs и fixtures для `gh`/GraphQL нужно синхронно обновить под новое
+  поле `assignees`.

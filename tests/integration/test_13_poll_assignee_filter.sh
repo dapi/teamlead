@@ -44,7 +44,11 @@ EOF
 
     (
         cd "$repo_root"
-        "$AI_TEAMLEAD_BIN" poll
+        env \
+            -u ZELLIJ \
+            -u ZELLIJ_SESSION_NAME \
+            -u ZELLIJ_PANE_ID \
+            "$AI_TEAMLEAD_BIN" poll
     )
 
     local issue_index session_uuid session_manifest launch_log

@@ -56,12 +56,16 @@
 - канонический versioning contract для `ai-teamlead`;
 - operator-facing механизм bump версии по типу изменения:
   `major`, `minor`, `patch`;
+- ограниченный explicit-version path только для bootstrap первого публичного
+  релиза и controlled recovery до завершенного publish;
 - contract для отдельных Release Notes;
 - локальная генерация Release Notes скриптами без требования внешнего LLM;
 - публикация GitHub Release с бинарями и checksum-артефактами;
 - install path через `brew`;
 - install path через `curl`;
 - changelog contract и связка changelog с release notes;
+- bootstrap-контракт первого публичного semver-релиза;
+- retry/failure contract для partial publish;
 - минимальные user-facing install-инструкции, достаточные для release-пакета;
 - verification contract для dry-run, smoke и реального release path.
 
@@ -85,8 +89,11 @@
   произвольному файлу;
 - оператор должен запускать release через один public entrypoint, а не через
   набор неявных команд `git`, `gh`, редактора и ручных upload-действий;
-- правило bump версии должно быть понятным человеку и достаточно формальным для
-  автоматизации в CI и release tooling;
+- штатный release path должен быть выражен через явный выбор `major` / `minor`
+  / `patch`, чтобы версия поднималась предсказуемо и без ручной синхронизации;
+- explicit version допустим только как отдельный исключительный режим:
+  bootstrap первого публичного релиза или controlled recovery до появления
+  завершенного GitHub Release этой версии;
 - contract версии должен соблюдать Semantic Versioning 2.0.0 полностью, а не
   использовать `major` / `minor` / `patch` только как нестрогие ярлыки;
 - `CHANGELOG.md` и Release Notes должны быть разными сущностями:
@@ -99,13 +106,26 @@
   генерировал его заново в облаке.
 - release flow должен запускаться в CI и быть воспроизводимым без ручной сборки
   на машине владельца;
+- локальный operator entrypoint допустим как preflight/control layer, но
+  успешный publish не должен зависеть от ручной сборки бинарей или ручного
+  пересчета checksum на host-машине;
 - install paths через `brew` и `curl` должны потреблять один и тот же
   опубликованный набор release assets;
 - changelog должен быть version-aware и пригодным как для репозитория, так и
-  как структурированный вход для локальной генерации Release Notes;
+  как структурированный вход для локальной генерации Release Notes, но не как
+  прямой publish body GitHub Release;
 - success единого release entrypoint должен означать не просто успешный local
   handoff в CI, а появление проверенного релиза в GitHub Releases с ожидаемыми
   assets и checksums;
+- для первой версии Homebrew install contract фиксируется через отдельный tap
+  `dapi/homebrew-ai-teamlead`, который получает formula-обновления только из
+  release automation;
+- первый публичный релиз начинает публичную semver-history проекта; backfill
+  предыдущих не-публичных версий в GitHub Releases и `CHANGELOG.md` не является
+  обязательным;
+- public install/distribution path должен учитывать security baseline из
+  `untrusted-input-security` и feature `0006-public-repo-security`, особенно для
+  `curl` bootstrap path и внешних download endpoints;
 - full user-facing onboarding остается отдельной задачей `#9`, поэтому в этой
   задаче достаточно release-oriented install contract и минимальной документации;
 - текущий проект уже использует GitHub Actions и GitHub Releases как допустимый
@@ -140,6 +160,12 @@ assets, changelog и Release Notes без ручной координации н
    опубликованного релиза.
 6. Поддерживающий релиз проверяет changelog и release notes по конкретной
    версии без ручного сравнения между tag, binary assets и историей коммитов.
+7. Владелец проекта выполняет первый публичный релиз без backfill прошлых
+   не-публичных версий: выбирает стартовую publishable version, получает для нее
+   первый `vX.Y.Z` tag, `CHANGELOG.md` section и versioned Release Notes.
+8. После частичного сбоя publish flow повторный запуск либо безопасно
+   продолжает публикацию той же версии, либо останавливается на явном
+   операторском блокере без silent overwrite артефактов.
 
 ## Dependencies
 
@@ -154,6 +180,13 @@ assets, changelog и Release Notes без ручной координации н
 - [../../../docs/features/0004-issue-implementation-flow/README.md](../../../docs/features/0004-issue-implementation-flow/README.md)
   и [../51/README.md](../51/README.md) явно оставляют release/deploy вне scope
   coding lifecycle, поэтому release contract нужно оформлять отдельно;
+- [../../../docs/untrusted-input-security.md](../../../docs/untrusted-input-security.md)
+  и
+  [../../../docs/features/0006-public-repo-security/README.md](../../../docs/features/0006-public-repo-security/README.md)
+  задают security baseline для public distribution и внешних install endpoints;
+- [../../../ROADMAP.md](../../../ROADMAP.md) отдельно фиксирует, что security
+  review issue `#56` влияет на release/onboarding/public repo adoption и должен
+  учитываться как cross-cutting риск;
 - [../../../docs/adr/0011-use-zellij-main-release-in-ci.md](../../../docs/adr/0011-use-zellij-main-release-in-ci.md)
   подтверждает, что проект уже использует GitHub Release как допустимый способ
   доставки бинарей в CI.

@@ -58,8 +58,10 @@ pipeline, а не как набор разрозненных правок.
 - Канонические документы, которые нужно обновить:
   - новый ADR по release/distribution contract;
   - guide по Release Notes и, возможно, template для них;
-  - feature- или SSOT-слой release flow, если в реализации появится устойчивый
-    repo-level contract шире одной issue;
+  - новый feature-doc слой `docs/features/0008-release-distribution/` как
+    постоянный дом для release/distribution knowledge;
+  - новый SSOT `docs/release-flow.md` как канонический operational contract для
+    release lifecycle, retry и publish semantics;
   - `README.md` как summary уровня репозитория, если release path становится
     частью верхнеуровневого позиционирования.
 - Summary-документы и шаблоны, которые нужно синхронизировать:
@@ -81,8 +83,13 @@ pipeline, а не как набор разрозненных правок.
 - локальный release path должен уметь генерировать Release Notes без
   обязательной зависимости на внешний облачный LLM;
 - нужен доступ к Homebrew tap update path и способ аутентификации для него;
+- канонический tap первой версии фиксируется как `dapi/homebrew-ai-teamlead`,
+  а CI должен получить secret `HOMEBREW_TAP_GITHUB_TOKEN`;
 - первая publishable версия должна быть явно выбрана до запуска реального
   release workflow.
+- security baseline из issue `#56` и
+  [../../../docs/untrusted-input-security.md](../../../docs/untrusted-input-security.md)
+  должен быть учтен для public install/download path.
 
 ## Порядок работ
 
@@ -102,13 +109,20 @@ pipeline, а не как набор разрозненных правок.
 
 - создан новый ADR по release/distribution contract;
 - зафиксированы:
+  - выбранный release tooling approach `cargo-dist`;
   - единый public release entrypoint;
   - semver tag contract;
-  - operator-facing bump contract для `major` / `minor` / `patch`;
+  - штатный bump contract для `major` / `minor` / `patch`;
+  - guardrails для exact-version bootstrap/recovery path;
   - source of truth для версии;
   - changelog gate;
   - guide и storage contract для Release Notes;
+  - минимальный формат Release Notes;
   - стратегия `brew` и `curl`;
+  - tap contract `dapi/homebrew-ai-teamlead`;
+  - direct-commit path обновления tap;
+  - integrity contract для `curl` installer;
+  - partial-failure/retry contract;
   - выбранный минимальный release matrix первой версии.
 
 Проверка:
@@ -131,7 +145,11 @@ pipeline, а не как набор разрозненных правок.
 
 - добавлен `CHANGELOG.md`;
 - добавлен или выбран единый bump entrypoint для `major` / `minor` / `patch`;
+- exact-version path ограничен bootstrap/recovery правилами и автоматически
+  отклоняется вне этих сценариев;
 - добавлен guide по Release Notes;
+- guide по Release Notes фиксирует обязательные секции и отличие от
+  `CHANGELOG.md`;
 - release entrypoint генерирует `docs/releases/vX.Y.Z.md` локально до tag/push;
 - tooling валидирует совпадение:
   - `Cargo.toml version`;
@@ -170,7 +188,8 @@ pipeline, а не как набор разрозненных правок.
 
 - dry-run release;
 - контролируемый smoke выпуск тестовой версии;
-- сверка asset names, checksums и release notes.
+- сверка asset names, checksums и release notes;
+- проверка bootstrap первой publishable версии без backfill старых релизов.
 
 ### Этап 4. Подключить install channels `brew` и `curl`
 
@@ -186,13 +205,17 @@ pipeline, а не как набор разрозненных правок.
 Результат этапа:
 
 - Homebrew formula обновляется автоматически из release pipeline;
+- обновление formula выполняется в tap `dapi/homebrew-ai-teamlead` через
+  `HOMEBREW_TAP_GITHUB_TOKEN` и direct commit в default branch;
 - `curl` installer умеет ставить latest stable и explicit version;
 - оба канала используют опубликованные release assets и checksums.
 
 Проверка:
 
 - smoke path для `brew install`;
+- smoke path на синхронность formula URL/checksum с опубликованным release;
 - smoke path для `curl` installer на чистом окружении;
+- smoke path на обязательную checksum-валидацию `curl` installer;
 - проверка установленной бинарной версии после установки.
 
 ### Этап 5. Синхронизировать минимальную release-документацию
@@ -225,20 +248,25 @@ pipeline, а не как набор разрозненных правок.
 - весь релиз запускается одним public entrypoint;
 - bump `major` / `minor` / `patch` выполняется одним понятным entrypoint и не
   требует ручной синхронизации version metadata;
+- exact-version path остается только bootstrap/recovery исключением и не
+  размывает основной SemVer bump contract;
 - `Cargo.toml`, semver tag, changelog и GitHub Release связаны единым
   контрактом;
 - Semantic Versioning 2.0.0 соблюдается полностью;
 - Release Notes локально генерируются, сохраняются в repo и попадают в GitHub
   Release как отдельный от changelog артефакт;
 - `brew` и `curl` ставят опубликованный бинарь, а не development snapshot;
+- tap `dapi/homebrew-ai-teamlead` обновляется из CI по каноническому auth-path;
+- `curl` installer использует GitHub Releases как единственный trust path для
+  latest stable и не ставит бинарь без checksum verification;
 - release automation не требует ручной сборки артефактов;
 - минимальная release/install документация синхронизирована с реальным
-  pipeline.
+  pipeline;
+- partial failure приводит к явному retry/recovery решению, а не к silent
+  overwrite release artifacts.
 
 ## Открытые вопросы и риски
 
-- конкретный Homebrew tap update path и его auth-contract нужно аккуратно
-  выбрать до реального publish;
 - первый публичный release может потребовать отдельного controlled rollout,
   если текущая version history в git еще не отражена в `CHANGELOG.md`;
 - если выбранный release tool окажется слишком opinionated для нужного tap или

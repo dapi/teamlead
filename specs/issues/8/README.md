@@ -54,18 +54,31 @@ Analysis-пакет подготовлен и готов к human review.
 - [../../../README.md](../../../README.md)
 - [../../../ROADMAP.md](../../../ROADMAP.md)
 - [../../../docs/code-quality.md](../../../docs/code-quality.md)
+- [../../../docs/untrusted-input-security.md](../../../docs/untrusted-input-security.md)
 - [../../../docs/issue-analysis-flow.md](../../../docs/issue-analysis-flow.md)
 - [../../../docs/documentation-process.md](../../../docs/documentation-process.md)
 - [../../../docs/implementation-plan.md](../../../docs/implementation-plan.md)
 - [../../../docs/features/0001-ai-teamlead-cli/README.md](../../../docs/features/0001-ai-teamlead-cli/README.md)
 - [../../../docs/features/0002-repo-init/README.md](../../../docs/features/0002-repo-init/README.md)
 - [../../../docs/features/0004-issue-implementation-flow/README.md](../../../docs/features/0004-issue-implementation-flow/README.md)
+- [../../../docs/features/0006-public-repo-security/README.md](../../../docs/features/0006-public-repo-security/README.md)
 - [../../../docs/adr/0011-use-zellij-main-release-in-ci.md](../../../docs/adr/0011-use-zellij-main-release-in-ci.md)
 - [../51/README.md](../51/README.md)
 
 ## Open Questions
 
-Блокирующих вопросов по текущему scope не выявлено.
+Блокирующих открытых вопросов по текущему scope не выявлено.
 
-Конкретное имя Homebrew tap-репозитория нужно зафиксировать в implementation
-ADR и CI-конфигурации, но это не меняет базовый контракт задачи.
+В analysis-пакете зафиксированы:
+
+- штатный release path через `--bump <major|minor|patch>`;
+- ограниченный exact-version path только для bootstrap/recovery;
+- канонический release tooling первой версии: `cargo-dist`;
+- канонический Homebrew tap первой версии `dapi/homebrew-ai-teamlead`;
+- канонический tap update path: direct commit из CI;
+- минимальный формат Release Notes и guide для их генерации;
+- integrity contract для `curl`: latest stable только из GitHub Releases и
+  обязательная checksum-проверка перед установкой;
+- bootstrap-контракт первого публичного релиза без обязательного backfill
+  прошлых версий;
+- fail-closed поведение при partial publish и повторном запуске релиза.

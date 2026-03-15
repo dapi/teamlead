@@ -238,7 +238,7 @@ fn spawn_new_session(
 ) -> Result<()> {
     let zellij_command = match launch {
         NewSessionLaunch::CustomLayout(layout_name) => format!(
-            "env -u ZELLIJ -u ZELLIJ_SESSION_NAME -u ZELLIJ_PANE_ID zellij --session {} --layout {}",
+            "env -u ZELLIJ -u ZELLIJ_SESSION_NAME -u ZELLIJ_PANE_ID zellij --session {} --new-session-with-layout {}",
             shell_single_quote(session_name),
             shell_single_quote(layout_name)
         ),
@@ -1278,7 +1278,7 @@ mod tests {
         let spawns = shell.spawns.borrow();
         assert_eq!(spawns.len(), 1);
         assert!(
-            spawns[0].contains("--session 'ai-teamlead' --layout 'custom-layout'"),
+            spawns[0].contains("--session 'ai-teamlead' --new-session-with-layout 'custom-layout'"),
             "custom layout path must create session via named layout: {}",
             spawns[0]
         );

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
 
 use crate::shell::Shell;
 
@@ -161,6 +161,95 @@ impl<'a> GhProjectClient<'a> {
         )?;
         Ok(())
     }
+
+    pub fn list_pull_requests_for_head(
+        &self,
+        cwd: &Path,
+        branch: &str,
+    ) -> Result<Vec<PullRequestSummary>> {
+        let stdout = self.shell.run(
+            cwd,
+            "gh",
+            &["pr", "list", "--head", branch, "--json", "number,url"],
+        )?;
+        parse_json_prefix(&stdout).context("failed to parse pull request list response")
+    }
+
+    pub fn load_issue_details(
+        &self,
+        cwd: &Path,
+        owner: &str,
+        repo: &str,
+        issue_number: u64,
+    ) -> Result<IssueDetails> {
+        let stdout = self.shell.run(
+            cwd,
+            "gh",
+            &[
+                "issue",
+                "view",
+                &issue_number.to_string(),
+                "--repo",
+                &format!("{owner}/{repo}"),
+                "--json",
+                "number,title,body,url",
+            ],
+        )?;
+
+        let response: IssueViewResponse =
+            serde_json::from_str(&stdout).context("failed to parse issue details response")?;
+
+        Ok(IssueDetails {
+            number: response.number,
+            title: response.title,
+            body: response.body,
+            url: response.url,
+        })
+    }
+
+    pub fn load_pull_request(&self, cwd: &Path, number: u64) -> Result<PullRequestDetails> {
+        let stdout = self.shell.run(
+            cwd,
+            "gh",
+            &[
+                "pr",
+                "view",
+                &number.to_string(),
+                "--json",
+                "number,url,state,mergedAt,isDraft,headRefName,baseRefName",
+            ],
+        )?;
+        parse_json_prefix(&stdout).context("failed to parse pull request details response")
+    }
+
+    pub fn resolve_pull_request_for_head(
+        &self,
+        cwd: &Path,
+        branch: &str,
+    ) -> Result<Option<PullRequestDetails>> {
+        let pull_requests = self.list_pull_requests_for_head(cwd, branch)?;
+        match pull_requests.as_slice() {
+            [] => Ok(None),
+            [pull_request] => self.load_pull_request(cwd, pull_request.number).map(Some),
+            _ => Err(anyhow!(
+                "multiple pull requests found for canonical branch '{branch}'"
+            )),
+        }
+    }
+
+    pub fn close_issue(&self, cwd: &Path, issue_number: u64) -> Result<()> {
+        self.shell
+            .run(cwd, "gh", &["issue", "close", &issue_number.to_string()])?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IssueDetails {
+    pub number: u64,
+    pub title: String,
+    pub body: String,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -196,6 +285,41 @@ impl ProjectIssueItem {
     pub fn matches_repo(&self, owner: &str, repo: &str) -> bool {
         self.repo_owner == owner && self.repo_name == repo
     }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct PullRequestSummary {
+    pub number: u64,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct PullRequestDetails {
+    pub number: u64,
+    pub url: String,
+    pub state: String,
+    #[serde(rename = "mergedAt")]
+    pub merged_at: Option<String>,
+    #[serde(rename = "isDraft")]
+    pub is_draft: bool,
+    #[serde(rename = "headRefName")]
+    pub head_ref_name: String,
+    #[serde(rename = "baseRefName")]
+    pub base_ref_name: String,
+}
+
+impl PullRequestDetails {
+    pub fn is_merged(&self) -> bool {
+        self.merged_at.is_some() || self.state == "MERGED"
+    }
+}
+
+fn parse_json_prefix<T>(stdout: &str) -> Result<T>
+where
+    T: DeserializeOwned,
+{
+    let mut deserializer = serde_json::Deserializer::from_str(stdout);
+    T::deserialize(&mut deserializer).context("invalid json payload")
 }
 
 #[derive(Debug, Deserialize)]
@@ -264,6 +388,14 @@ struct ProjectIssueRepository {
 #[derive(Debug, Deserialize)]
 struct ProjectIssueOwner {
     login: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct IssueViewResponse {
+    number: u64,
+    title: String,
+    body: String,
+    url: String,
 }
 
 #[cfg(test)]
@@ -397,5 +529,69 @@ mod tests {
             .option_id_by_name("Backlog")
             .expect_err("missing option should fail");
         assert!(error.to_string().contains("Backlog"));
+    }
+
+    #[test]
+    fn parses_pull_request_list_and_details() {
+        let shell = FakeShell::default()
+            .with_response(
+                "gh pr list --head implementation/issue-42 --json number,url",
+                r#"[{"number":99,"url":"https://github.com/dapi/teamlead/pull/99"}]"#,
+            )
+            .with_response(
+                "gh pr view 99 --json number,url,state,mergedAt,isDraft,headRefName,baseRefName",
+                r#"{"number":99,"url":"https://github.com/dapi/teamlead/pull/99","state":"MERGED","mergedAt":"2026-03-14T20:00:00Z","isDraft":false,"headRefName":"implementation/issue-42","baseRefName":"main"}"#,
+            );
+        let client = GhProjectClient::new(&shell);
+
+        let list = client
+            .list_pull_requests_for_head(Path::new("/repo"), "implementation/issue-42")
+            .expect("pr list");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].number, 99);
+
+        let pr = client
+            .load_pull_request(Path::new("/repo"), 99)
+            .expect("pr details");
+        assert!(pr.is_merged());
+        assert_eq!(pr.head_ref_name, "implementation/issue-42");
+        assert_eq!(pr.base_ref_name, "main");
+    }
+
+    #[test]
+    fn rejects_ambiguous_pull_request_list_for_head() {
+        let shell = FakeShell::default().with_response(
+            "gh pr list --head implementation/issue-42 --json number,url",
+            r#"[{"number":99,"url":"https://github.com/dapi/teamlead/pull/99"},{"number":100,"url":"https://github.com/dapi/teamlead/pull/100"}]"#,
+        );
+        let client = GhProjectClient::new(&shell);
+
+        let error = client
+            .resolve_pull_request_for_head(Path::new("/repo"), "implementation/issue-42")
+            .expect_err("ambiguous PR list should fail");
+        assert!(error.to_string().contains("multiple pull requests found"));
+    }
+
+    #[test]
+    fn loads_issue_details_from_gh_issue_view() {
+        let shell = FakeShell::default().with_response(
+            "gh issue view 42 --repo dapi/teamlead --json number,title,body,url",
+            r#"{"number":42,"title":"Issue title","body":"Issue body","url":"https://github.com/dapi/teamlead/issues/42"}"#,
+        );
+
+        let client = GhProjectClient::new(&shell);
+        let details = client
+            .load_issue_details(Path::new("."), "dapi", "teamlead", 42)
+            .expect("issue details");
+
+        assert_eq!(
+            details,
+            IssueDetails {
+                number: 42,
+                title: "Issue title".into(),
+                body: "Issue body".into(),
+                url: "https://github.com/dapi/teamlead/issues/42".into(),
+            }
+        );
     }
 }

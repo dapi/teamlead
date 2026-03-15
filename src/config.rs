@@ -235,6 +235,8 @@ pub struct ImplementationFlowStatuses {
     pub waiting_for_ci: String,
     #[serde(default = "default_implementation_status_waiting_for_code_review")]
     pub waiting_for_code_review: String,
+    #[serde(default = "default_done_status")]
+    pub done: String,
     #[serde(default = "default_implementation_status_blocked")]
     pub implementation_blocked: String,
 }
@@ -246,9 +248,14 @@ impl Default for ImplementationFlowStatuses {
             implementation_in_progress: default_implementation_status_in_progress(),
             waiting_for_ci: default_implementation_status_waiting_for_ci(),
             waiting_for_code_review: default_implementation_status_waiting_for_code_review(),
+            done: default_done_status(),
             implementation_blocked: default_implementation_status_blocked(),
         }
     }
+}
+
+fn default_done_status() -> String {
+    "Done".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -495,7 +502,7 @@ mod tests {
     }
 
     const SETTINGS_TEMPLATE: &str = include_str!("../templates/init/settings.yml");
-    const FIELD_CONTRACTS: [FieldContract; 28] = [
+    const FIELD_CONTRACTS: [FieldContract; 29] = [
         FieldContract {
             key: "github.project_id",
             kind: FieldKind::RequiredWithoutDefault,
@@ -561,6 +568,12 @@ mod tests {
             kind: FieldKind::DefaultedByApplication,
             runtime_default: Some("Waiting for Code Review"),
             template_line: "#     waiting_for_code_review: \"Waiting for Code Review\"",
+        },
+        FieldContract {
+            key: "issue_implementation_flow.statuses.done",
+            kind: FieldKind::DefaultedByApplication,
+            runtime_default: Some("Done"),
+            template_line: "#     done: \"Done\"",
         },
         FieldContract {
             key: "issue_implementation_flow.statuses.implementation_blocked",
@@ -686,6 +699,7 @@ issue_implementation_flow:
     implementation_in_progress: "Implementation In Progress"
     waiting_for_ci: "Waiting for CI"
     waiting_for_code_review: "Waiting for Code Review"
+    done: "Done"
     implementation_blocked: "Implementation Blocked"
 
 runtime:

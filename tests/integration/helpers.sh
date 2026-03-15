@@ -284,13 +284,34 @@ if [[ "${1:-}" == "repo" && "${2:-}" == "view" ]]; then
     exit 0
 fi
 
+if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
+    issue_number="${3:-42}"
+    repo_ref="${5:-dapi/example}"
+    printf '{"number":%s,"title":"Issue %s","body":"","url":"https://github.com/%s/issues/%s"}\n' \
+        "$issue_number" \
+        "$issue_number" \
+        "$repo_ref" \
+        "$issue_number"
+    exit 0
+fi
+
 if [[ "${1:-}" == "pr" && "${2:-}" == "list" ]]; then
-    printf '%s\n' "${AI_TEAMLEAD_TEST_GH_PR_LIST_RESULT:-0}"
+    printf '%s\n' "${AI_TEAMLEAD_TEST_GH_PR_LIST_RESULT:-[]}"
+    exit 0
+fi
+
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' "${AI_TEAMLEAD_TEST_GH_PR_VIEW_RESULT:-{\"number\":0,\"url\":\"\",\"state\":\"OPEN\",\"mergedAt\":null,\"isDraft\":true,\"headRefName\":\"\",\"baseRefName\":\"main\"}}"
     exit 0
 fi
 
 if [[ "${1:-}" == "pr" && "${2:-}" == "create" ]]; then
     printf '%s\n' "${AI_TEAMLEAD_TEST_GH_PR_CREATE_RESULT:-https://github.com/dapi/example/pull/99}"
+    exit 0
+fi
+
+if [[ "${1:-}" == "issue" && "${2:-}" == "close" ]]; then
+    printf '%s\n' "${AI_TEAMLEAD_TEST_GH_ISSUE_CLOSE_RESULT:-}"
     exit 0
 fi
 

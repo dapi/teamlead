@@ -1,6 +1,6 @@
 # ADR-0025: stage-aware runtime bindings для issue session
 
-Статус: accepted
+Статус: accepted, частично superseded by ADR-0028
 Дата: 2026-03-14
 
 ## Контекст
@@ -16,6 +16,8 @@
 - analysis binding нельзя терять после перехода к coding stage;
 - implementation stage нужен собственный reusable binding;
 - `run` должен понимать, какой binding искать при re-entry.
+- первая версия post-merge reconciliation предполагала более богатую semantic
+  роль runtime, чем в итоге допустила GitHub-first модель.
 
 ## Решение
 
@@ -27,7 +29,18 @@ Runtime model становится stage-aware.
 - `issues/<issue_number>.json` хранит binding отдельно по stage;
 - для каждого stage у одной issue допускается не более одного активного
   binding;
-- analysis и implementation binding не перезаписывают друг друга.
+- analysis и implementation binding не перезаписывают друг друга;
+- implementation session дополнительно может хранить `stage_branch`,
+  `stage_worktree_root` и `stage_artifacts_dir`.
+
+После принятия [ADR-0028](./0028-github-first-reconcile-and-runtime-cache-only.md)
+это решение сохраняется, но в уточненном виде:
+
+- stage-aware bindings остаются принятым runtime contract;
+- runtime не является semantic source of truth по состоянию issue;
+- поля вроде `tracked_pr_*` и `last_known_flow_status` не входят в обязательный
+  semantic contract и могут существовать только как optional cache/diagnostic
+  metadata.
 
 Минимальная форма issue index:
 
@@ -38,7 +51,6 @@ Runtime model становится stage-aware.
     "analysis": "session-uuid-1",
     "implementation": "session-uuid-2"
   },
-  "last_known_flow_status": "Implementation In Progress",
   "updated_at": "2026-03-14T12:00:00Z"
 }
 ```
@@ -86,3 +98,14 @@ Runtime model становится stage-aware.
 ### 2026-03-14
 
 - runtime binding обобщен до stage-aware модели
+- решение о tracked PR metadata и `last_known_flow_status` вынесено на
+  повторный пересмотр
+
+### 2026-03-15
+
+- ADR сохранен в статусе `accepted` для stage-aware binding model
+- [ADR-0028](./0028-github-first-reconcile-and-runtime-cache-only.md)
+  частично supersede-ит прежние допущения о semantic роли runtime
+- хранение `tracked_pr_number`, `tracked_pr_url` и использование
+  `last_known_flow_status` как обязательного semantic state больше не входят в
+  этот ADR

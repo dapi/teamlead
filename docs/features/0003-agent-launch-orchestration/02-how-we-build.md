@@ -214,6 +214,12 @@ launch_agent:
   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
   worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+  global_args:
+    claude:
+      - "--permission-mode"
+      - "auto"
+    codex:
+      - "--full-auto"
 ```
 
 Во время запуска `session_name` рендерится тем же template path, что и
@@ -236,6 +242,17 @@ launch_agent:
 - любые оставшиеся `${...}` считаются ошибкой конфигурации
 - полученное значение используется как fallback, если нет CLI override и
   `ZELLIJ_SESSION_NAME`
+
+Для `launch_agent.global_args.*` действуют дополнительные правила:
+
+- значения задаются как список строк, а не как одна shell-строка;
+- отсутствие пользовательского override означает application defaults;
+- canonical defaults:
+  - `codex`: `["--full-auto"]`
+  - `claude`: `["--permission-mode", "auto"]`
+- более агрессивные значения, например
+  `["--dangerously-skip-permissions"]` для `claude`, считаются opt-in
+  override и не входят в default-layer
 
 ## Ограничение минимального generated layout
 

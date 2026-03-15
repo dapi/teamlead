@@ -86,6 +86,24 @@ else
     ((FAIL++)) || true
 fi
 
+if grep -Fq 'global_args:' "$SETTINGS_FILE" && \
+   grep -Fq -- '--permission-mode' "$SETTINGS_FILE" && \
+   grep -Fq -- '--full-auto' "$SETTINGS_FILE"; then
+    echo "  PASS: init bootstraps canonical agent global args defaults"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init bootstraps canonical agent global args defaults"
+    ((FAIL++)) || true
+fi
+
+if grep -Fq -- '--dangerously-skip-permissions' "$SETTINGS_FILE"; then
+    echo "  PASS: init keeps dangerous claude args as opt-in example"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init keeps dangerous claude args as opt-in example"
+    ((FAIL++)) || true
+fi
+
 if grep -Fq 'plugin location="compact-bar"' "$ANALYSIS_TAB_TEMPLATE_FILE"; then
     echo "  PASS: init bootstraps analysis tab with compact-bar"
     ((PASS++)) || true

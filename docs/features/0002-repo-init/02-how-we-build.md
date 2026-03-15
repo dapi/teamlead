@@ -110,6 +110,12 @@
   `${HOME}/worktrees/${REPO}/${BRANCH}`
 - `launch_agent.analysis_artifacts_dir_template` по умолчанию равно
   `specs/issues/${ISSUE_NUMBER}`
+- `launch_agent.global_args.codex` по умолчанию равно `["--full-auto"]`
+- `launch_agent.global_args.claude` по умолчанию равно
+  `["--permission-mode", "auto"]`
+- более агрессивные launcher args, например
+  `--dangerously-skip-permissions` для `claude`, показываются только как
+  opt-in пример и не входят в runtime default-layer
 
 Операторские действия после `init`:
 
@@ -120,7 +126,8 @@
 3. при необходимости скорректировать `zellij.layout` и
    `./.ai-teamlead/zellij/analysis-tab.kdl` под собственный tab-level UX
 4. при необходимости скорректировать `launch_agent.*` templates
-5. только после этого запускать `poll` или `run`
+5. при необходимости заменить canonical agent defaults своими override-args
+6. только после этого запускать `poll` или `run`
 
 Если placeholder не заменен или id невалиден, текущая реализация не проходит
 этап загрузки project snapshot и завершает `poll`/`run` ошибкой.

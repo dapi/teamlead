@@ -633,6 +633,14 @@ fn run_internal_render_launch_agent_context(shell: &dyn Shell, issue_ref: &str) 
     println!("BRANCH={}", shell_quote(&rendered.branch));
     println!("WORKTREE_ROOT={}", shell_quote(&rendered.worktree_root));
     println!("ARTIFACTS_DIR={}", shell_quote(&rendered.artifacts_dir));
+    println!(
+        "CLAUDE_GLOBAL_ARGS={}",
+        shell_quote_array(&rendered.claude_global_args)
+    );
+    println!(
+        "CODEX_GLOBAL_ARGS={}",
+        shell_quote_array(&rendered.codex_global_args)
+    );
     Ok(())
 }
 
@@ -699,6 +707,8 @@ struct LaunchAgentContext {
     branch: String,
     worktree_root: String,
     artifacts_dir: String,
+    claude_global_args: Vec<String>,
+    codex_global_args: Vec<String>,
 }
 
 fn render_launch_agent_context(
@@ -767,6 +777,8 @@ fn render_launch_agent_context(
         branch,
         worktree_root,
         artifacts_dir,
+        claude_global_args: context.config.launch_agent.global_args.claude.clone(),
+        codex_global_args: context.config.launch_agent.global_args.codex.clone(),
     })
 }
 
@@ -807,12 +819,25 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
+fn shell_quote_array(values: &[String]) -> String {
+    let quoted = values
+        .iter()
+        .map(|value| shell_quote(value))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("({quoted})")
+}
+
 #[cfg(test)]
 mod launch_agent_tests {
-    use super::{ExecutionContext, LaunchAgentContext, validate_stage_preconditions};
+    use super::{
+        ExecutionContext, LaunchAgentContext, render_launch_agent_context, shell_quote_array,
+        validate_stage_preconditions,
+    };
     use crate::config::{
         Config, FlowStatuses, GithubConfig, ImplementationFlowStatuses, IssueAnalysisFlowConfig,
-        IssueImplementationFlowConfig, LaunchAgentConfig, RuntimeConfig, ZellijConfig,
+        IssueImplementationFlowConfig, LaunchAgentConfig, LaunchAgentGlobalArgsConfig,
+        RuntimeConfig, ZellijConfig,
     };
     use crate::domain::FlowStage;
     use crate::repo::RepoContext;
@@ -844,6 +869,8 @@ mod launch_agent_tests {
             branch,
             worktree_root: worktree,
             artifacts_dir: artifacts,
+            claude_global_args: vec!["--permission-mode".into(), "auto".into()],
+            codex_global_args: vec!["--full-auto".into()],
         };
 
         assert_eq!(context.branch, "analysis/issue-42");
@@ -852,6 +879,27 @@ mod launch_agent_tests {
             "/home/danil/worktrees/teamlead/analysis/issue-42"
         );
         assert_eq!(context.artifacts_dir, "specs/issues/42");
+        assert_eq!(
+            shell_quote_array(&context.codex_global_args),
+            "('--full-auto')"
+        );
+    }
+
+    #[test]
+    fn render_launch_agent_context_includes_default_global_args() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        std::fs::create_dir_all(repo_root.join(".git")).expect("git dir");
+
+        let context = test_execution_context(repo_root);
+        let rendered = render_launch_agent_context(&context, 42, FlowStage::Analysis)
+            .expect("render launch context");
+
+        assert_eq!(rendered.codex_global_args, vec!["--full-auto".to_string()]);
+        assert_eq!(
+            rendered.claude_global_args,
+            vec!["--permission-mode".to_string(), "auto".to_string()]
+        );
     }
 
     #[test]
@@ -941,6 +989,7 @@ mod launch_agent_tests {
                     analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}".into(),
                     worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}".into(),
                     analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}".into(),
+                    global_args: LaunchAgentGlobalArgsConfig::default(),
                     implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}".into(),
                     implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
                         .into(),

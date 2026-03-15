@@ -52,3 +52,9 @@
 - [README.md](../../README.md)
 - [docs/features/0001-ai-teamlead-cli/02-how-we-build.md](../features/0001-ai-teamlead-cli/02-how-we-build.md)
 - [docs/features/0001-ai-teamlead-cli/03-how-we-verify.md](../features/0001-ai-teamlead-cli/03-how-we-verify.md)
+
+## Журнал изменений
+
+### 2026-03-13
+
+- создан ADR

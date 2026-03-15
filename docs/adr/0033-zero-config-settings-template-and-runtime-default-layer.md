@@ -71,3 +71,9 @@ bootstrap-template перестает быть fully materialized runtime YAML.
 - [docs/adr/0012-repo-init-command-and-project-contract-layer.md](./0012-repo-init-command-and-project-contract-layer.md)
 - [docs/features/0002-repo-init/README.md](../features/0002-repo-init/README.md)
 - [specs/issues/33/README.md](../../specs/issues/33/README.md)
+
+## Журнал изменений
+
+### 2026-03-14
+
+- создан ADR

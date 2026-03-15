@@ -101,7 +101,7 @@ bootstrap `settings.yml` допускается как comment-only template с
 
 - `github.project_id` остается `required-without-default` полем
 - `session_name` следует правилу из
-  [ADR-0021](../../../docs/adr/0021-zellij-session-target-resolution.md):
+  [ADR-0023](../../../docs/adr/0023-zellij-session-target-resolution.md):
   default хранится как `${REPO}` и рендерится из GitHub repo slug, но
   используется как fallback после CLI override и `ZELLIJ_SESSION_NAME`
 - `tab_name` это стабильный project-local идентификатор для orchestration

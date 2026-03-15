@@ -76,6 +76,7 @@
 - [docs/features/0004-issue-implementation-flow/README.md](./docs/features/0004-issue-implementation-flow/README.md)
 - [docs/features/0005-agent-flow-integration-testing/README.md](./docs/features/0005-agent-flow-integration-testing/README.md)
 - [docs/features/0006-public-repo-security/README.md](./docs/features/0006-public-repo-security/README.md)
+- [docs/adr/](./docs/adr/) — Architecture Decision Records
 - [AURA.md](./AURA.md) как project-local доступ к
   личному высокоуровневому инженерному видению разработчика
 
@@ -240,6 +241,9 @@ launch_agent:
   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
   worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+  implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
+  implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+  implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
 ```
 
 Ниже показана ожидаемая shape project-local contract layer.

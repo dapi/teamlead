@@ -94,3 +94,9 @@
 - [../features/0001-ai-teamlead-cli/README.md](../features/0001-ai-teamlead-cli/README.md)
 - [./0002-standalone-foreground-daemon.md](./0002-standalone-foreground-daemon.md)
 - [./0005-cli-contract-for-poll-and-run.md](./0005-cli-contract-for-poll-and-run.md)
+
+## Журнал изменений
+
+### 2026-03-14
+
+- создан ADR

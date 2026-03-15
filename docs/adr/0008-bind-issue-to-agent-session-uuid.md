@@ -52,3 +52,9 @@ Durable-артефакты сессии хранятся в `.git/.ai-teamlead/`
 - [docs/issue-analysis-flow.md](../issue-analysis-flow.md)
 - [docs/adr/0004-runtime-artifacts-in-git-dir.md](./0004-runtime-artifacts-in-git-dir.md)
 - [docs/features/0001-ai-teamlead-cli/README.md](../features/0001-ai-teamlead-cli/README.md)
+
+## Журнал изменений
+
+### 2026-03-13
+
+- создан ADR

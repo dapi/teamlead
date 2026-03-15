@@ -347,6 +347,34 @@ launch_agent:
 
 Точный runtime и launcher contract задаются связанными ADR и feature-docs.
 
+## Как проверяем
+
+Критерии корректности implementation flow:
+
+- `run <issue>` корректно dispatch-ит issue в implementation flow при статусах
+  из implementation lifecycle
+- переход `Ready for Implementation` -> `Implementation In Progress` создает
+  stage-specific session-binding и подготавливает implementation branch/worktree
+- re-entry для `Implementation In Progress` переиспользует существующий
+  implementation context
+- re-entry для `Waiting for CI`, `Waiting for Code Review`,
+  `Implementation Blocked` выполняет reconcile по GitHub Project status, PR и
+  branch state до выбора действия
+- `complete-stage` корректно переводит issue в target-статус для каждого
+  допустимого outcome
+- outcome `merged` терминализирует issue в `Done`, закрывает GitHub issue и
+  выполняет best-effort cleanup
+- запрещенные переходы невозможны через CLI
+- отсутствие approved analysis artifacts блокирует вход в implementation flow
+- GitHub Project status остается единственным источником истины
+
+Инварианты:
+
+- implementation flow не запускается без approved analysis artifacts
+- статус в GitHub Project меняется до старта coding stage
+- `run` не создает дублирующих implementation PR для одной issue
+- runtime state не подменяет GitHub Project status
+
 ## Связанные документы
 
 - [README.md](../README.md)

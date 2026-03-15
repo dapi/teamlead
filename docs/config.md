@@ -186,6 +186,22 @@ Bootstrap overview:
   - `codex`: `["--full-auto"]`
   - `claude`: `["--permission-mode", "auto"]`
 
+## Выбор агента в runtime
+
+`launch-agent.sh` определяет, какой агент запускается для coding session:
+
+- если в системе доступен `codex`, launcher запускает `codex`
+- если `codex` недоступен, но доступен `claude`, launcher запускает `claude`
+- если ни один из агентов недоступен, launcher оставляет shell внутри
+  подготовленного worktree
+
+`launch_agent.global_args` позволяет задать аргументы для каждого агента
+раздельно. При отсутствии пользовательского override применяются application
+defaults:
+
+- `codex`: `["--full-auto"]`
+- `claude`: `["--permission-mode", "auto"]`
+
 ## Runtime-последствия
 
 Для MVP durable-связка между issue и агентской сессией хранится в

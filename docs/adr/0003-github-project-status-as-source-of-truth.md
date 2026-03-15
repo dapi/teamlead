@@ -57,3 +57,9 @@ default GitHub Project.
 
 - [README.md](../../README.md)
 - [docs/issue-analysis-flow.md](../issue-analysis-flow.md)
+
+## Журнал изменений
+
+### 2026-03-13
+
+- создан ADR

@@ -1,6 +1,6 @@
 # ADR-0030: public repo safe mode and permission gates
 
-Статус: proposed
+Статус: accepted
 Дата: 2026-03-14
 
 ## Контекст

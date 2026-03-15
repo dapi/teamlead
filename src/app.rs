@@ -456,7 +456,13 @@ fn prepare_session_manifest(
             stage,
             target_status,
         )?;
-        return persist_stage_workspace(context, &manifest.session_uuid, issue.issue_number, stage);
+        return persist_stage_workspace(
+            context,
+            github,
+            &manifest.session_uuid,
+            issue.issue_number,
+            stage,
+        );
     }
 
     let issue_index = context
@@ -500,16 +506,23 @@ fn prepare_session_manifest(
         .runtime
         .update_issue_flow_status(issue.issue_number, target_status)?;
 
-    persist_stage_workspace(context, &manifest.session_uuid, issue.issue_number, stage)
+    persist_stage_workspace(
+        context,
+        github,
+        &manifest.session_uuid,
+        issue.issue_number,
+        stage,
+    )
 }
 
 fn persist_stage_workspace(
     context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
     session_uuid: &str,
     issue_number: u64,
     stage: FlowStage,
 ) -> Result<SessionManifest> {
-    let launch_context = render_launch_agent_context(context, issue_number, stage)?;
+    let launch_context = render_launch_agent_context(context, github, issue_number, stage)?;
     context.runtime.update_stage_workspace(
         session_uuid,
         &launch_context.branch,
@@ -534,8 +547,13 @@ fn maybe_finalize_merged_implementation(
         return Ok(None);
     }
 
-    let launch_context =
-        render_launch_agent_context(context, issue.issue_number, FlowStage::Implementation)?;
+    let github = GhProjectClient::new(shell);
+    let launch_context = render_launch_agent_context(
+        context,
+        &github,
+        issue.issue_number,
+        FlowStage::Implementation,
+    )?;
     if !canonical_pr_is_merged(shell, &context.repo.repo_root, &launch_context.branch)? {
         return Ok(None);
     }

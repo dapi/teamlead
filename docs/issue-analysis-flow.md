@@ -338,7 +338,7 @@ TUI/CLI-контрола или формализованных action-кнопо
   смены статуса
 - если смена статуса не удалась, session должна оставаться `active`
 
-Спецификация: [ADR-0020](adr/0020-agent-session-completion-signal.md).
+Спецификация: [ADR-0020](./adr/0020-agent-session-completion-signal.md).
 
 ## Versioned analysis-артефакты
 
@@ -827,12 +827,12 @@ Issue должна переводиться в `Analysis Blocked`, если:
 
 ## Связанные документы
 
-- [docs/adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md](adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md)
-- [docs/adr/0019-conditional-sections-by-task-type-project-type-and-size.md](adr/0019-conditional-sections-by-task-type-project-type-and-size.md)
-- [docs/adr/0013-agent-session-history-as-dialog-source.md](adr/0013-agent-session-history-as-dialog-source.md)
-- [docs/adr/0020-agent-session-completion-signal.md](adr/0020-agent-session-completion-signal.md)
-- [docs/implementation-plan.md](./implementation-plan.md)
-- [docs/features/0001-ai-teamlead-cli/README.md](features/0001-ai-teamlead-cli/README.md)
+- [adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md](./adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md)
+- [adr/0019-conditional-sections-by-task-type-project-type-and-size.md](./adr/0019-conditional-sections-by-task-type-project-type-and-size.md)
+- [adr/0013-agent-session-history-as-dialog-source.md](./adr/0013-agent-session-history-as-dialog-source.md)
+- [adr/0020-agent-session-completion-signal.md](./adr/0020-agent-session-completion-signal.md)
+- [implementation-plan.md](./implementation-plan.md)
+- [features/0001-ai-teamlead-cli/README.md](./features/0001-ai-teamlead-cli/README.md)
 
 ## Журнал изменений
 

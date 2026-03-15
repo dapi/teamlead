@@ -69,12 +69,14 @@
 - `README.md` как repo-level overview и входная точка
 - [ROADMAP.md](./ROADMAP.md) как repo-level карта backlog, кластеров и
   зависимостей
+- [docs/governance.md](./docs/governance.md)
 - [docs/code-quality.md](./docs/code-quality.md)
 - [docs/config.md](./docs/config.md)
 - [docs/documentation-structure.md](./docs/documentation-structure.md)
 - [docs/documentation-process.md](./docs/documentation-process.md)
 - [docs/implementation-plan.md](./docs/implementation-plan.md)
 - [docs/templates/feature-spec-template.md](./docs/templates/feature-spec-template.md)
+- [docs/templates/implementation-plan-template.md](./docs/templates/implementation-plan-template.md)
 - [docs/issue-analysis-flow.md](./docs/issue-analysis-flow.md)
 - [docs/issue-implementation-flow.md](./docs/issue-implementation-flow.md)
 - [docs/untrusted-input-security.md](./docs/untrusted-input-security.md)

@@ -214,9 +214,24 @@ repo-local runtime-артефактах внутри `.git/.ai-teamlead/`.
 - [./adr/0001-repo-local-ai-config.md](./adr/0001-repo-local-ai-config.md)
 - [./adr/0032-zellij-launch-target-pane-tab.md](./adr/0032-zellij-launch-target-pane-tab.md)
 
+## Zero-config defaults
+
+Все поля из секции «Defaulted-by-application» имеют canonical runtime defaults,
+встроенные в приложение. Это означает:
+
+- оператору достаточно указать только `github.project_id` в active YAML;
+- остальные поля приложение заполняет собственными defaults;
+- bootstrap template (`templates/init/settings.yml`) содержит все defaults
+  в закомментированном виде для наглядности;
+- раскомментирование поля в `settings.yml` переопределяет application default.
+
+Связанный ADR:
+[ADR-0033](./adr/0033-zero-config-settings-template-and-runtime-default-layer.md).
+
 ## Журнал изменений
 
 ### 2026-03-15
 
 - добавлен журнал изменений
 - документ приведён к стандарту SSOT
+- добавлена секция «Zero-config defaults» (ADR-0033)

@@ -244,7 +244,12 @@ Observed state для implementation re-entry выводится из:
 Агент или разработчик:
 
 - читает approved analysis artifacts;
+- восстанавливает documentation delta из approved implementation plan:
+  какие канонические документы, summary-слои и шаблоны должны быть обновлены;
 - восстанавливает implementation context;
+- сначала обновляет или подготавливает изменение обязательных документов, если
+  они меняют контракт реализации; если документационные изменения не нужны, это
+  должно быть явно подтверждено текущим планом;
 - вносит кодовые изменения;
 - запускает обязательные локальные проверки;
 - при необходимости обновляет связанные docs и follow-up ADR.
@@ -370,3 +375,5 @@ launch_agent:
   cache/diagnostic metadata, а не semantic source of truth
 - добавлен [ADR-0028](./adr/0028-github-first-reconcile-and-runtime-cache-only.md)
   как accepted replacement для соответствующих частей ADR-0025/0026/0027
+- добавлено требование явно восстанавливать и выполнять план изменений
+  документации в implementation stage

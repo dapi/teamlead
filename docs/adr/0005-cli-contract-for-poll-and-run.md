@@ -66,7 +66,7 @@
 
 - [docs/issue-analysis-flow.md](../issue-analysis-flow.md)
 - [docs/features/0001-ai-teamlead-cli/README.md](../features/0001-ai-teamlead-cli/README.md)
-- [docs/adr/0021-zellij-session-target-resolution.md](./0021-zellij-session-target-resolution.md)
+- [docs/adr/0023-zellij-session-target-resolution.md](./0023-zellij-session-target-resolution.md)
 
 ## Журнал изменений
 

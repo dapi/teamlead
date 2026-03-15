@@ -53,3 +53,9 @@
 
 - [docs/features/0001-ai-teamlead-cli/README.md](../features/0001-ai-teamlead-cli/README.md)
 - [docs/issue-analysis-flow.md](../issue-analysis-flow.md)
+
+## Журнал изменений
+
+### 2026-03-13
+
+- создан ADR

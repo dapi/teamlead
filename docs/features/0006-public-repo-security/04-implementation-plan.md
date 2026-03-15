@@ -28,8 +28,8 @@
 - [01-what-we-build.md](./01-what-we-build.md)
 - [02-how-we-build.md](./02-how-we-build.md)
 - [03-how-we-verify.md](./03-how-we-verify.md)
-- [docs/adr/0027-untrusted-github-content-as-hostile-input.md](../../adr/0027-untrusted-github-content-as-hostile-input.md)
-- [docs/adr/0028-public-repo-safe-mode-and-permission-gates.md](../../adr/0028-public-repo-safe-mode-and-permission-gates.md)
+- [docs/adr/0029-untrusted-github-content-as-hostile-input.md](../../adr/0029-untrusted-github-content-as-hostile-input.md)
+- [docs/adr/0030-public-repo-safe-mode-and-permission-gates.md](../../adr/0030-public-repo-safe-mode-and-permission-gates.md)
 
 ## Зависимости и предпосылки
 
@@ -49,8 +49,8 @@ trust boundaries и минимальные safe-mode правила.
 
 Основание:
 [docs/untrusted-input-security.md](../../untrusted-input-security.md),
-[docs/adr/0027-untrusted-github-content-as-hostile-input.md](../../adr/0027-untrusted-github-content-as-hostile-input.md),
-[docs/adr/0028-public-repo-safe-mode-and-permission-gates.md](../../adr/0028-public-repo-safe-mode-and-permission-gates.md).
+[docs/adr/0029-untrusted-github-content-as-hostile-input.md](../../adr/0029-untrusted-github-content-as-hostile-input.md),
+[docs/adr/0030-public-repo-safe-mode-and-permission-gates.md](../../adr/0030-public-repo-safe-mode-and-permission-gates.md).
 
 Результат этапа:
 документация позволяет без догадок восстановить, какие входы считаются
@@ -67,7 +67,7 @@ manual review на отсутствие противоречий между feat
 
 Основание:
 [02-how-we-build.md](./02-how-we-build.md),
-[docs/adr/0028-public-repo-safe-mode-and-permission-gates.md](../../adr/0028-public-repo-safe-mode-and-permission-gates.md).
+[docs/adr/0030-public-repo-safe-mode-and-permission-gates.md](../../adr/0030-public-repo-safe-mode-and-permission-gates.md).
 
 Результат этапа:
 каждый запуск имеет вычисленный security mode, причем `unknown` visibility не

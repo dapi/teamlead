@@ -40,7 +40,7 @@ config contract для дополнительных пользовательск
   string;
 - runtime по умолчанию использует достаточно автономные, но не максимально
   опасные значения:
-  - для `codex`: `--full-auto`
+  - для `codex`: `--ask-for-approval never --sandbox workspace-write`
   - для `claude`: `--permission-mode auto`
 - `templates/init/settings.yml` показывает эти defaults явно, а более
   агрессивные режимы оставляет opt-in примерами;
@@ -78,9 +78,9 @@ config contract для дополнительных пользовательск
   как список строк, а не как одна shell-строка;
 - runtime default должен быть один и совпадать между Rust default-layer,
   `templates/init/settings.yml` и документацией;
-- `--full-auto` для `codex` и `--permission-mode auto` для `claude`
-  рассматриваются как "достаточно автономные", но не как опасный bypass safety
-  boundary;
+- `--ask-for-approval never --sandbox workspace-write` для `codex` и
+  `--permission-mode auto` для `claude` рассматриваются как "достаточно
+  автономные", но не как опасный bypass safety boundary;
 - dangerous-режимы вроде `--dangerously-skip-permissions` для `claude` должны
   оставаться явным opt-in;
 - существующие конфиги без новых полей должны оставаться валидными;
@@ -99,7 +99,8 @@ defaults, чтобы launcher был достаточно самостоятел
 ## Use Cases
 
 1. Пользователь ничего не меняет в конфиге и получает запуск `codex` с runtime
-   default `--full-auto`, при этом остальные launcher semantics не меняются.
+   default `--ask-for-approval never --sandbox workspace-write`, при этом
+   остальные launcher semantics не меняются.
 2. Пользователь ничего не меняет в конфиге и получает запуск `claude` с
    runtime default `--permission-mode auto`, если launcher идет по ветке
    `claude`.

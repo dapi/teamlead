@@ -199,8 +199,8 @@ Human approval должен быть:
 - [issue-analysis-flow.md](./issue-analysis-flow.md)
 - [issue-implementation-flow.md](./issue-implementation-flow.md)
 - [features/0006-public-repo-security/README.md](./features/0006-public-repo-security/README.md)
-- [adr/0027-untrusted-github-content-as-hostile-input.md](./adr/0027-untrusted-github-content-as-hostile-input.md)
-- [adr/0028-public-repo-safe-mode-and-permission-gates.md](./adr/0028-public-repo-safe-mode-and-permission-gates.md)
+- [adr/0029-untrusted-github-content-as-hostile-input.md](./adr/0029-untrusted-github-content-as-hostile-input.md)
+- [adr/0030-public-repo-safe-mode-and-permission-gates.md](./adr/0030-public-repo-safe-mode-and-permission-gates.md)
 
 ## Журнал изменений
 

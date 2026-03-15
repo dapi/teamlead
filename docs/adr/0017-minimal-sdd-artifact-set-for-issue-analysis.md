@@ -1,4 +1,4 @@
-# ADR-0017: minimal SDD artifact set for `issue-analysis-flow`
+# ADR-0017: минимальный набор SDD-артефактов для `issue-analysis-flow`
 
 Статус: accepted
 Дата: 2026-03-13

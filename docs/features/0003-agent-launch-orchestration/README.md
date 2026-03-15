@@ -6,8 +6,8 @@
 
 ## Контекст
 
-Эта feature описывает orchestration flow, который запускает агентскую analysis
-session по issue.
+Эта feature описывает orchestration flow, который запускает агентскую session
+по issue для analysis и implementation stage.
 
 Важно:
 
@@ -46,9 +46,11 @@ session/tab.
 
 - [../../issue-analysis-flow.md](../../issue-analysis-flow.md)
 - [../../adr/0005-cli-contract-for-poll-and-run.md](../../adr/0005-cli-contract-for-poll-and-run.md)
+- [../../adr/0021-cli-contract-poll-run-loop.md](../../adr/0021-cli-contract-poll-run-loop.md)
 - [../../adr/0008-bind-issue-to-agent-session-uuid.md](../../adr/0008-bind-issue-to-agent-session-uuid.md)
 - [../../adr/0014-zellij-launch-context-naming.md](../../adr/0014-zellij-launch-context-naming.md)
 - [../../adr/0022-zellij-layout-contract-for-new-sessions.md](../../adr/0022-zellij-layout-contract-for-new-sessions.md)
+- [../../adr/0032-zellij-launch-target-pane-tab.md](../../adr/0032-zellij-launch-target-pane-tab.md)
 
 ## Открытые вопросы
 

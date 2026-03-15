@@ -1,8 +1,10 @@
 # Issue 51: Что строим
 
-Статус: draft
-Последнее обновление: 2026-03-14
-Статус согласования: pending human review
+Статус: approved
+Последнее обновление: 2026-03-15
+Статус согласования: approved
+Approved By: dapi
+Approved At: 2026-03-14T23:05:41+03:00
 
 ## Problem
 
@@ -37,7 +39,8 @@
 
 Нужен минимальный post-merge contract, в котором:
 
-- merge tracked implementation PR считается явным событием завершения coding
+- merge канонического implementation PR считается явным событием завершения
+  coding
   stage;
 - `issue-implementation-flow` получает terminal path после merge без создания
   отдельного третьего flow для MVP;
@@ -53,11 +56,12 @@
 В текущую задачу входит:
 
 - расширить существующий post-review lifecycle в `issue-implementation-flow`;
-- определить canonical relation между merge tracked PR, issue state и
+- определить canonical relation между merge канонического implementation PR,
+  issue state и
   GitHub Project status;
 - ввести terminal status `Done` для завершенной implementation issue;
-- определить, как post-merge path находит tracked implementation PR и
-  соответствующий runtime context;
+- определить, как post-merge path находит канонический implementation PR и
+  соответствующий execution context;
 - зафиксировать cleanup contract для implementation session-binding, worktree и
   local branch;
 - определить verification strategy для merged path, cleanup и повторных
@@ -81,7 +85,7 @@
 
 - GitHub Project status остается source of truth по lifecycle issue даже после
   merge;
-- tracked implementation PR должен определяться явным contract-способом, а не
+- implementation PR должен определяться явным contract-способом, а не
   эвристикой по любому merge commit в default branch;
 - post-merge finalization должна быть idempotent, потому что повторный `run`
   или повторная reconciliation попытка возможны;
@@ -105,8 +109,9 @@
 1. PR для issue уже находится в `Waiting for Code Review`, reviewer мержит его,
    и следующий post-merge path закрывает issue, переводит project item в
    `Done` и очищает implementation runtime artifacts.
-2. Оператор повторно запускает `run` для issue с уже merged tracked PR и
-   получает idempotent terminalization вместо повторного coding path.
+2. Оператор повторно запускает `run` для issue с уже merged каноническим
+   implementation PR и получает idempotent terminalization вместо повторного
+   coding path.
 3. Remote branch уже удалена GitHub после merge, а local worktree еще есть;
    cleanup удаляет только локальные implementation artifacts и не считает
    отсутствие remote branch ошибкой.

@@ -1,4 +1,4 @@
-# ADR-0027: `zellij.tab_name_template` для issue-aware tab naming
+# ADR-0031: `zellij.tab_name_template` для issue-aware tab naming
 
 Статус: accepted
 Дата: 2026-03-14

@@ -1,4 +1,4 @@
-# ADR-0019: conditional sections by task type, project type and size
+# ADR-0019: условные секции по типу задачи, типу проекта и размеру
 
 Статус: accepted
 Дата: 2026-03-13

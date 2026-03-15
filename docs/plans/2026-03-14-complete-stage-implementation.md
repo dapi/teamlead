@@ -1,5 +1,7 @@
 # complete-stage Implementation Plan
 
+Статус: выполнен
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Реализовать CLI-команду `ai-teamlead internal complete-stage`, которая позволяет agent session сигналить core о результате анализа (plan-ready / needs-clarification / blocked) и автоматически выполняет git commit, push, draft PR и смену статуса issue в GitHub Project.

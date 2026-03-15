@@ -182,9 +182,16 @@ Poller или ручной запуск выбирает одну подходя
 - issue связывается с этим `session_uuid` в отношении `1 <-> 1`
 - target `zellij` session определяется в порядке:
   `--zellij-session` -> `ZELLIJ_SESSION_NAME` -> `zellij.session_name`
-- `zellij.tab_name` задается конфигурацией проекта
+- effective launch target для `run` определяется в порядке:
+  `--launch-target` -> `zellij.launch_target` -> runtime default `tab`
+- `poll` и `loop` не имеют отдельного public `--launch-target` override и
+  используют только config/default path
+- `zellij.tab_name` задает stable shared tab для `pane`-режима
+- optional `zellij.tab_name_template` влияет только на `tab`-режим
 - orchestration-слой создает или находит нужные session/tab по effective target
-  session и `tab_name`
+  session и launch target:
+  - `pane` переиспользует shared tab или создает его, если он отсутствует
+  - `tab` создает отдельный analysis tab
 - existing session не должна содержать panes из другого GitHub repo
 - после запуска pane в runtime state сохраняются `zellij.session_id`,
   `zellij.tab_id` и `zellij.pane_id`
@@ -331,6 +338,8 @@ TUI/CLI-контрола или формализованных action-кнопо
   смены статуса
 - если смена статуса не удалась, session должна оставаться `active`
 
+Спецификация: [ADR-0020](./adr/0020-agent-session-completion-signal.md).
+
 ## Versioned analysis-артефакты
 
 Результат анализа должен быть сохранен как versioned SDD-комплект в каталоге:
@@ -399,6 +408,9 @@ TUI/CLI-контрола или формализованных action-кнопо
 
 - содержать ссылки на все документы, без которых нельзя корректно выполнить
   задачу
+- содержать явный план изменений документации: какие канонические документы,
+  summary-слои или шаблоны нужно обновить и что допустимо оставить без
+  изменений
 - связывать этапы реализации с SSOT, ADR, verification-документами и quality
   bar
 - позволять агенту быстро восстанавливать причинно-следственные связи решений
@@ -779,46 +791,50 @@ Issue должна переводиться в `Analysis Blocked`, если:
 
 ## Открытые вопросы
 
-- точный шаблон вопросов на уточнение
-- точный шаблон финального пакета анализа
 - нужно ли вводить явные текстовые команды для оператора уже в первой версии
-## Контракт завершения стадии
 
-Agent session сигналит core о результате анализа через CLI-команду:
+Закрытые вопросы:
 
-```
-ai-teamlead internal complete-stage <session_uuid> --outcome <outcome> --message <msg>
-```
+- ~~точный шаблон вопросов на уточнение~~ — закрыт: agent формулирует вопросы
+  свободно в сессии
+- ~~точный шаблон финального пакета анализа~~ — закрыт: контракт артефактов
+  зафиксирован в секции «Versioned analysis-артефакты» и ADR-0017/0019
 
-Допустимые значения `outcome`:
+## Как проверяем
 
-- `plan-ready` — SDD-комплект собран, issue → `Waiting for Plan Review`
-- `needs-clarification` — нужны ответы, issue → `Waiting for Clarification`
-- `blocked` — технический блокер, issue → `Analysis Blocked`
+Критерии корректности analysis flow:
 
-Команда инкапсулирует: git add/commit, git push, draft PR (для plan-ready),
-смену статуса в GitHub Project, обновление session.json.
+- `poll` выбирает верхнюю issue из `Backlog` в порядке GitHub Project snapshot
+- `run` переводит issue в `Analysis In Progress` до старта анализа
+- если смена статуса не удалась, анализ не стартует
+- re-entry из `Waiting for Clarification`, `Waiting for Plan Review`,
+  `Analysis Blocked` переиспользует существующий `session_uuid`
+- `complete-stage` с outcome `plan-ready` коммитит артефакты и переводит issue
+  в `Waiting for Plan Review`
+- `complete-stage` с outcome `needs-clarification` переводит issue в
+  `Waiting for Clarification`
+- human gate обязателен для принятия плана и для ответов на вопросы
+- запрещенные переходы (например, `Backlog` -> `Ready for Implementation`)
+  невозможны через CLI
+- versioned SDD-комплект содержит минимум README + три оси
 
-Агент НЕ выполняет git/gh операции самостоятельно.
+Инварианты:
 
-Спецификация: ADR-0020, `docs/adr/0020-agent-session-completion-signal.md`.
+- GitHub Project status остается единственным источником истины
+- локальный state не используется для обхода правил переходов
+- каждая issue в анализе имеет связанный `session_uuid`
+- `poll`, `run` и `loop` используют один и тот же issue-level `run`-path
 
 ## Связанные документы
 
-- [docs/adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md](adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md)
-- [docs/adr/0019-conditional-sections-by-task-type-project-type-and-size.md](adr/0019-conditional-sections-by-task-type-project-type-and-size.md)
-- [docs/adr/0013-agent-session-history-as-dialog-source.md](adr/0013-agent-session-history-as-dialog-source.md)
-- [docs/adr/0020-agent-session-completion-signal.md](adr/0020-agent-session-completion-signal.md)
-- [docs/implementation-plan.md](./implementation-plan.md)
-- [docs/features/0001-ai-teamlead-cli/README.md](features/0001-ai-teamlead-cli/README.md)
+- [adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md](./adr/0017-minimal-sdd-artifact-set-for-issue-analysis.md)
+- [adr/0019-conditional-sections-by-task-type-project-type-and-size.md](./adr/0019-conditional-sections-by-task-type-project-type-and-size.md)
+- [adr/0013-agent-session-history-as-dialog-source.md](./adr/0013-agent-session-history-as-dialog-source.md)
+- [adr/0020-agent-session-completion-signal.md](./adr/0020-agent-session-completion-signal.md)
+- [implementation-plan.md](./implementation-plan.md)
+- [features/0001-ai-teamlead-cli/README.md](./features/0001-ai-teamlead-cli/README.md)
 
 ## Журнал изменений
-
-### 2026-03-14
-
-- добавлен контракт завершения стадии `complete-stage` (ADR-0020)
-- закрыт открытый вопрос о machine-readable артефактах — решение через
-  CLI-команду `ai-teamlead internal complete-stage`
 
 ### 2026-03-13
 
@@ -862,7 +878,13 @@ ai-teamlead internal complete-stage <session_uuid> --outcome <outcome> --message
   над `poll`
 - уточнено, что первичный вход в flow идет через `Backlog`, а повторный ручной
   вход регулируется отдельными правилами `run`
-- добавлен контракт завершения стадии через
-  `ai-teamlead internal complete-stage`
+- добавлен контракт завершения стадии `complete-stage` (ADR-0020)
 - orchestration commit/push/draft PR выведен из prompt-обязанностей агента в
   CLI-команду завершения стадии
+- закрыт открытый вопрос о machine-readable артефактах — решение через
+  CLI-команду `ai-teamlead internal complete-stage`
+
+### 2026-03-15
+
+- добавлено требование включать в `План имплементации` явный план изменений
+  документации

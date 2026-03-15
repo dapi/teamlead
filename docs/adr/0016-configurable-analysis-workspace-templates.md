@@ -1,4 +1,4 @@
-# ADR-0016: configurable analysis workspace templates in `settings.yml`
+# ADR-0016: настраиваемые шаблоны рабочего пространства анализа в `settings.yml`
 
 Статус: accepted
 Дата: 2026-03-13

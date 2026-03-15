@@ -1,3 +1,4 @@
+pub mod agent_flow;
 pub mod app;
 pub mod cli;
 pub mod complete_stage;

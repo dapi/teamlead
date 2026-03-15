@@ -44,8 +44,8 @@
 - [docs/features/0001-ai-teamlead-cli/README.md](../0001-ai-teamlead-cli/README.md)
 - [docs/features/0003-agent-launch-orchestration/README.md](../0003-agent-launch-orchestration/README.md)
 - [docs/adr/0006-use-gh-cli-as-github-integration-layer.md](../../adr/0006-use-gh-cli-as-github-integration-layer.md)
-- [docs/adr/0027-untrusted-github-content-as-hostile-input.md](../../adr/0027-untrusted-github-content-as-hostile-input.md)
-- [docs/adr/0028-public-repo-safe-mode-and-permission-gates.md](../../adr/0028-public-repo-safe-mode-and-permission-gates.md)
+- [docs/adr/0029-untrusted-github-content-as-hostile-input.md](../../adr/0029-untrusted-github-content-as-hostile-input.md)
+- [docs/adr/0030-public-repo-safe-mode-and-permission-gates.md](../../adr/0030-public-repo-safe-mode-and-permission-gates.md)
 
 ## Открытые вопросы
 

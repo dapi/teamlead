@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -234,6 +235,8 @@ pub struct ImplementationFlowStatuses {
     pub waiting_for_ci: String,
     #[serde(default = "default_implementation_status_waiting_for_code_review")]
     pub waiting_for_code_review: String,
+    #[serde(default = "default_done_status")]
+    pub done: String,
     #[serde(default = "default_implementation_status_blocked")]
     pub implementation_blocked: String,
 }
@@ -245,9 +248,14 @@ impl Default for ImplementationFlowStatuses {
             implementation_in_progress: default_implementation_status_in_progress(),
             waiting_for_ci: default_implementation_status_waiting_for_ci(),
             waiting_for_code_review: default_implementation_status_waiting_for_code_review(),
+            done: default_done_status(),
             implementation_blocked: default_implementation_status_blocked(),
         }
     }
+}
+
+fn default_done_status() -> String {
+    "Done".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -267,12 +275,32 @@ impl Default for RuntimeConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ValueEnum, Default)]
+#[serde(rename_all = "lowercase")]
+#[value(rename_all = "lowercase")]
+pub enum LaunchTarget {
+    Pane,
+    #[default]
+    Tab,
+}
+
+impl LaunchTarget {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pane => "pane",
+            Self::Tab => "tab",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ZellijConfig {
     #[serde(default = "default_zellij_session_name")]
     pub session_name: String,
     #[serde(default = "default_zellij_tab_name")]
     pub tab_name: String,
+    #[serde(default = "default_zellij_launch_target")]
+    pub launch_target: LaunchTarget,
     #[serde(default)]
     pub tab_name_template: Option<String>,
     #[serde(default = "default_zellij_layout")]
@@ -284,6 +312,7 @@ impl Default for ZellijConfig {
         Self {
             session_name: default_zellij_session_name(),
             tab_name: default_zellij_tab_name(),
+            launch_target: default_zellij_launch_target(),
             tab_name_template: None,
             layout: default_zellij_layout(),
         }
@@ -399,6 +428,10 @@ fn default_zellij_tab_name() -> String {
     "issue-analysis".into()
 }
 
+fn default_zellij_launch_target() -> LaunchTarget {
+    LaunchTarget::Tab
+}
+
 fn default_zellij_layout() -> Option<String> {
     None
 }
@@ -420,7 +453,12 @@ fn default_claude_global_args() -> Vec<String> {
 }
 
 fn default_codex_global_args() -> Vec<String> {
-    vec!["--full-auto".into()]
+    vec![
+        "--ask-for-approval".into(),
+        "never".into(),
+        "--sandbox".into(),
+        "workspace-write".into(),
+    ]
 }
 
 fn default_implementation_branch_template() -> String {
@@ -469,7 +507,7 @@ mod tests {
     }
 
     const SETTINGS_TEMPLATE: &str = include_str!("../templates/init/settings.yml");
-    const FIELD_CONTRACTS: [FieldContract; 27] = [
+    const FIELD_CONTRACTS: [FieldContract; 32] = [
         FieldContract {
             key: "github.project_id",
             kind: FieldKind::RequiredWithoutDefault,
@@ -537,6 +575,12 @@ mod tests {
             template_line: "#     waiting_for_code_review: \"Waiting for Code Review\"",
         },
         FieldContract {
+            key: "issue_implementation_flow.statuses.done",
+            kind: FieldKind::DefaultedByApplication,
+            runtime_default: Some("Done"),
+            template_line: "#     done: \"Done\"",
+        },
+        FieldContract {
             key: "issue_implementation_flow.statuses.implementation_blocked",
             kind: FieldKind::DefaultedByApplication,
             runtime_default: Some("Implementation Blocked"),
@@ -565,6 +609,12 @@ mod tests {
             kind: FieldKind::DefaultedByApplication,
             runtime_default: Some("issue-analysis"),
             template_line: "#   tab_name: \"issue-analysis\"",
+        },
+        FieldContract {
+            key: "zellij.launch_target",
+            kind: FieldKind::DefaultedByApplication,
+            runtime_default: Some("tab"),
+            template_line: "#   launch_target: \"tab\"",
         },
         FieldContract {
             key: "zellij.tab_name_template",
@@ -611,8 +661,26 @@ mod tests {
         FieldContract {
             key: "launch_agent.global_args.codex[0]",
             kind: FieldKind::DefaultedByApplication,
-            runtime_default: Some("--full-auto"),
-            template_line: "#       - \"--full-auto\"",
+            runtime_default: Some("--ask-for-approval"),
+            template_line: "#       - \"--ask-for-approval\"",
+        },
+        FieldContract {
+            key: "launch_agent.global_args.codex[1]",
+            kind: FieldKind::DefaultedByApplication,
+            runtime_default: Some("never"),
+            template_line: "#       - \"never\"",
+        },
+        FieldContract {
+            key: "launch_agent.global_args.codex[2]",
+            kind: FieldKind::DefaultedByApplication,
+            runtime_default: Some("--sandbox"),
+            template_line: "#       - \"--sandbox\"",
+        },
+        FieldContract {
+            key: "launch_agent.global_args.codex[3]",
+            kind: FieldKind::DefaultedByApplication,
+            runtime_default: Some("workspace-write"),
+            template_line: "#       - \"workspace-write\"",
         },
         FieldContract {
             key: "launch_agent.implementation_branch_template",
@@ -654,6 +722,7 @@ issue_implementation_flow:
     implementation_in_progress: "Implementation In Progress"
     waiting_for_ci: "Waiting for CI"
     waiting_for_code_review: "Waiting for Code Review"
+    done: "Done"
     implementation_blocked: "Implementation Blocked"
 
 runtime:
@@ -663,6 +732,7 @@ runtime:
 zellij:
   session_name: "ai-teamlead"
   tab_name: "issue-analysis"
+  launch_target: "tab"
   tab_name_template: "#${ISSUE_NUMBER}"
   layout: "custom-layout"
 
@@ -675,7 +745,10 @@ launch_agent:
       - "--permission-mode"
       - "auto"
     codex:
-      - "--full-auto"
+      - "--ask-for-approval"
+      - "never"
+      - "--sandbox"
+      - "workspace-write"
   implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
   implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
   implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
@@ -756,10 +829,16 @@ launch_agent:
             config.zellij.tab_name_template.as_deref(),
             Some("#${ISSUE_NUMBER}")
         );
+        assert_eq!(config.zellij.launch_target, LaunchTarget::Tab);
         assert_eq!(config.zellij.layout.as_deref(), Some("custom-layout"));
         assert_eq!(
             config.launch_agent.global_args.codex,
-            vec!["--full-auto".to_string()]
+            vec![
+                "--ask-for-approval".to_string(),
+                "never".to_string(),
+                "--sandbox".to_string(),
+                "workspace-write".to_string(),
+            ]
         );
         assert_eq!(
             config.launch_agent.global_args.claude,
@@ -817,7 +896,12 @@ launch_agent:
         assert_eq!(config.zellij.layout, None);
         assert_eq!(
             config.launch_agent.global_args.codex,
-            vec!["--full-auto".to_string()]
+            vec![
+                "--ask-for-approval".to_string(),
+                "never".to_string(),
+                "--sandbox".to_string(),
+                "workspace-write".to_string(),
+            ]
         );
         assert_eq!(
             config.launch_agent.global_args.claude,
@@ -837,6 +921,7 @@ github:
         assert_eq!(config.runtime.poll_interval_seconds, 3600);
         assert_eq!(config.zellij.session_name, "${REPO}");
         assert_eq!(config.zellij.tab_name, "issue-analysis");
+        assert_eq!(config.zellij.launch_target, LaunchTarget::Tab);
         assert_eq!(config.zellij.tab_name_template, None);
         assert_eq!(config.zellij.layout, None);
         assert_eq!(
@@ -849,7 +934,12 @@ github:
         );
         assert_eq!(
             config.launch_agent.global_args.codex,
-            vec!["--full-auto".to_string()]
+            vec![
+                "--ask-for-approval".to_string(),
+                "never".to_string(),
+                "--sandbox".to_string(),
+                "workspace-write".to_string(),
+            ]
         );
     }
 
@@ -882,18 +972,24 @@ zellij:
         assert_eq!(config.runtime.poll_interval_seconds, 60);
         assert_eq!(config.zellij.session_name, "custom-session");
         assert_eq!(config.zellij.tab_name, "issue-analysis");
+        assert_eq!(config.zellij.launch_target, LaunchTarget::Tab);
         assert_eq!(config.zellij.tab_name_template, None);
         assert_eq!(config.zellij.layout, None);
         assert_eq!(
             config.launch_agent.global_args.codex,
-            vec!["--full-auto".to_string()]
+            vec![
+                "--ask-for-approval".to_string(),
+                "never".to_string(),
+                "--sandbox".to_string(),
+                "workspace-write".to_string(),
+            ]
         );
     }
 
     #[test]
     fn allows_overriding_agent_global_args() {
         let yaml = sample_config().replace(
-            "  global_args:\n    claude:\n      - \"--permission-mode\"\n      - \"auto\"\n    codex:\n      - \"--full-auto\"\n",
+            "  global_args:\n    claude:\n      - \"--permission-mode\"\n      - \"auto\"\n    codex:\n      - \"--ask-for-approval\"\n      - \"never\"\n      - \"--sandbox\"\n      - \"workspace-write\"\n",
             "  global_args:\n    claude:\n      - \"--dangerously-skip-permissions\"\n    codex:\n      - \"--sandbox\"\n      - \"workspace-write\"\n",
         );
         let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
@@ -919,12 +1015,27 @@ zellij:
     }
 
     #[test]
+    fn parses_config_without_launch_target_as_runtime_default_tab() {
+        let yaml = sample_config().replace("  launch_target: \"tab\"\n", "");
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        let config = Config::load_from_str(&yaml, &path).expect("yaml should parse");
+        assert_eq!(config.zellij.launch_target, LaunchTarget::Tab);
+    }
+
+    #[test]
     fn rejects_blank_zellij_tab_name_template() {
         let yaml = sample_config().replace("#${ISSUE_NUMBER}", "   ");
         let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
         let config: Config = serde_yaml::from_str(&yaml).expect("yaml should parse");
         let error = config.validate(&path).expect_err("validation should fail");
         assert!(error.to_string().contains("zellij.tab_name_template"));
+    }
+
+    #[test]
+    fn rejects_invalid_zellij_launch_target() {
+        let yaml = sample_config().replace("launch_target: \"tab\"", "launch_target: \"split\"");
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        Config::load_from_str(&yaml, &path).expect_err("validation should fail");
     }
 
     #[test]
@@ -988,7 +1099,7 @@ zellij:
 
     #[test]
     fn rejects_blank_global_args() {
-        let yaml = sample_config().replace("\"--full-auto\"", "\"   \"");
+        let yaml = sample_config().replace("\"--ask-for-approval\"", "\"   \"");
         let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
         let error = Config::load_from_str(&yaml, &path).expect_err("validation should fail");
         assert!(

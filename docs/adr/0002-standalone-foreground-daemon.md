@@ -53,3 +53,9 @@ MVP runtime-модель:
 - [../../README.md](../../README.md)
 - [../issue-analysis-flow.md](../issue-analysis-flow.md)
 - [./0021-cli-contract-poll-run-loop.md](./0021-cli-contract-poll-run-loop.md)
+
+## Журнал изменений
+
+### 2026-03-13
+
+- создан ADR

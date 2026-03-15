@@ -22,6 +22,7 @@
 #     implementation_in_progress: "Implementation In Progress"
 #     waiting_for_ci: "Waiting for CI"
 #     waiting_for_code_review: "Waiting for Code Review"
+#     done: "Done"
 #     implementation_blocked: "Implementation Blocked"
 #
 # runtime:
@@ -31,6 +32,7 @@
 # zellij:
 #   session_name: "${REPO}"
 #   tab_name: "issue-analysis"
+#   launch_target: "tab"
 #   tab_name_template: "#${ISSUE_NUMBER}"
 #   layout: "compact"
 #
@@ -43,7 +45,10 @@
 #       - "--permission-mode"
 #       - "auto"
 #     codex:
-#       - "--full-auto"
+#       - "--ask-for-approval"
+#       - "never"
+#       - "--sandbox"
+#       - "workspace-write"
 #   implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
 #   implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
 #   implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"

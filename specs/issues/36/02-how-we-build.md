@@ -46,7 +46,10 @@ launch_agent:
       - "--permission-mode"
       - "auto"
     codex:
-      - "--full-auto"
+      - "--ask-for-approval"
+      - "never"
+      - "--sandbox"
+      - "workspace-write"
 ```
 
 Семантика:
@@ -59,7 +62,7 @@ launch_agent:
 
 Канонические defaults:
 
-- `codex`: `["--full-auto"]`
+- `codex`: `["--ask-for-approval", "never", "--sandbox", "workspace-write"]`
 - `claude`: `["--permission-mode", "auto"]`
 
 Более агрессивные значения считаются opt-in overrides, а не default-layer.
@@ -82,7 +85,10 @@ launch_agent:
       - "--permission-mode"
       - "auto"
     codex:
-      - "--full-auto"
+      - "--ask-for-approval"
+      - "never"
+      - "--sandbox"
+      - "workspace-write"
   # opt-in example:
   # global_args:
   #   claude:

@@ -6,7 +6,7 @@
    `codex`.
 2. При отсутствии пользовательского override launcher использует canonical
    defaults:
-   - `codex`: `--full-auto`
+   - `codex`: `--ask-for-approval never --sandbox workspace-write`
    - `claude`: `--permission-mode auto`
 3. После явного пользовательского override `codex` launcher запускает `codex`
    с указанными аргументами вместо default-значения.
@@ -43,7 +43,8 @@
 
 1. Пользователь включает только `codex` args.
 2. Launcher идет по ветке `codex`.
-3. Stub или реальный CLI по default получает `--full-auto` перед prompt без
+3. Stub или реальный CLI по default получает
+   `--ask-for-approval never --sandbox workspace-write` перед prompt без
    изменения остальных аргументов.
 
 4. Пользователь не задает override для `claude`.
@@ -75,9 +76,11 @@ Unit tests:
 
 Integration tests:
 
-- `run`/launcher path без override передает `--full-auto` в stub `codex`;
+- `run`/launcher path без override передает
+  `--ask-for-approval never --sandbox workspace-write` в stub `codex`;
 - `run`/launcher path с `codex` override передает пользовательские args и не
-  дублирует default `--full-auto`, если пользователь его заменил;
+  дублирует default `--ask-for-approval never --sandbox workspace-write`, если
+  пользователь его заменил;
 - `run`/launcher path с `claude` override и без доступного `codex` передает
   пользовательские args в stub `claude`;
 - `run`/launcher path без override и без доступного `codex` передает

@@ -1,6 +1,6 @@
-# ADR-0027: untrusted GitHub content as hostile input
+# ADR-0029: недоверенный контент GitHub как враждебный ввод
 
-Статус: proposed
+Статус: accepted
 Дата: 2026-03-14
 
 ## Контекст
@@ -83,7 +83,7 @@ prompt injection или маскировать hostile content под внутр
 
 - [../untrusted-input-security.md](../untrusted-input-security.md)
 - [../features/0006-public-repo-security/README.md](../features/0006-public-repo-security/README.md)
-- [./0028-public-repo-safe-mode-and-permission-gates.md](./0028-public-repo-safe-mode-and-permission-gates.md)
+- [./0030-public-repo-safe-mode-and-permission-gates.md](./0030-public-repo-safe-mode-and-permission-gates.md)
 
 ## Журнал изменений
 

@@ -61,8 +61,8 @@ Security model делится на четыре слоя:
 фиксироваться в:
 
 - [docs/untrusted-input-security.md](../../untrusted-input-security.md) как SSOT;
-- [docs/adr/0027-untrusted-github-content-as-hostile-input.md](../../adr/0027-untrusted-github-content-as-hostile-input.md);
-- [docs/adr/0028-public-repo-safe-mode-and-permission-gates.md](../../adr/0028-public-repo-safe-mode-and-permission-gates.md);
+- [docs/adr/0029-untrusted-github-content-as-hostile-input.md](../../adr/0029-untrusted-github-content-as-hostile-input.md);
+- [docs/adr/0030-public-repo-safe-mode-and-permission-gates.md](../../adr/0030-public-repo-safe-mode-and-permission-gates.md);
 - runtime-слое `ai-teamlead`, который enforce-ит ключевые gates, а не только
   документирует их.
 

@@ -51,3 +51,9 @@ file в первую версию не входят.
 
 - [docs/features/0001-ai-teamlead-cli/README.md](../features/0001-ai-teamlead-cli/README.md)
 - [docs/features/0001-ai-teamlead-cli/03-how-we-verify.md](../features/0001-ai-teamlead-cli/03-how-we-verify.md)
+
+## Журнал изменений
+
+### 2026-03-13
+
+- создан ADR

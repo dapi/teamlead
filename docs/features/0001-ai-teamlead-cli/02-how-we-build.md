@@ -101,10 +101,12 @@ bootstrap `settings.yml` допускается как comment-only template с
 
 - `github.project_id` остается `required-without-default` полем
 - `session_name` следует правилу из
-  [ADR-0021](../../../docs/adr/0021-zellij-session-target-resolution.md):
+  [ADR-0023](../../../docs/adr/0023-zellij-session-target-resolution.md):
   default хранится как `${REPO}` и рендерится из GitHub repo slug, но
   используется как fallback после CLI override и `ZELLIJ_SESSION_NAME`
 - `tab_name` это стабильный project-local идентификатор для orchestration
+- `launch_target` задает launcher mode внутри выбранной session:
+  `tab` по runtime default или `pane` при явном override
 - analysis/implementation statuses, `runtime.*`, `zellij.*` и
   `launch_agent.*` относятся к `defaulted-by-application`
 - `zellij.layout` остается `example-only extension`: template показывает
@@ -112,8 +114,8 @@ bootstrap `settings.yml` допускается как comment-only template с
   runtime-path
 - runtime `session_id`, `tab_id`, `pane_id` не задаются в конфиге
 - `ai-teamlead` во время запуска должен выбрать effective target session,
-  запретить shared multi-repo existing session и затем либо найти существующие
-  session/tab, либо создать их
+  effective launch target, запретить shared multi-repo existing session и затем
+  либо найти существующие session/tab, либо создать их
 
 ## Ограничения реализации
 

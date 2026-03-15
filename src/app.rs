@@ -1,18 +1,26 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 
-use crate::cli::{Cli, Command, InternalCommand};
-use crate::complete_stage::run_complete_stage;
-use crate::config::Config;
-use crate::domain::{
-    FlowStage, decide_run_stage, parse_issue_ref, select_next_backlog_project_item,
+use crate::agent_flow::{
+    AgentFlowTestRequest, plan_agent_flow_test, print_plan, print_sandbox_result,
+    run_agent_flow_test,
 };
-use crate::github::{GhProjectClient, ProjectIssueItem, ProjectSnapshot};
+use crate::cli::{Cli, Command, InternalCommand, TestAgentFlowArgs, TestCommand};
+use crate::complete_stage::{
+    canonical_pr_is_merged, finalize_merged_implementation, run_complete_stage,
+};
+use crate::config::{Config, LaunchTarget};
+use crate::domain::{
+    FlowStage, allowed_run_statuses, decide_run_stage, format_closed_issue_message,
+    format_missing_issue_message, format_project_attachment_failure_message,
+    format_run_denied_message, parse_issue_ref, select_next_backlog_project_item,
+};
+use crate::github::{GhProjectClient, ProjectIssueItem, ProjectSnapshot, RepoIssue};
 use crate::init::init_project_files;
 use crate::project_files::ProjectPaths;
 use crate::repo::RepoContext;
@@ -27,15 +35,51 @@ pub fn run() -> Result<()> {
 
     match cli.command {
         Command::Init => run_init(&shell),
+        Command::Test { test } => run_test(&shell, test),
         Command::Poll { zellij_session } => run_poll(&shell, zellij_session.as_deref()),
         Command::Loop { zellij_session } => run_loop(&shell, zellij_session.as_deref()),
         Command::Run {
             issue,
             debug,
             zellij_session,
-        } => run_manual_run(&shell, &issue, debug, zellij_session.as_deref()),
+            launch_target,
+        } => run_manual_run(
+            &shell,
+            &issue,
+            debug,
+            zellij_session.as_deref(),
+            launch_target,
+        ),
         Command::Internal { internal } => run_internal(&shell, internal),
     }
+}
+
+fn run_test(shell: &dyn Shell, test: TestCommand) -> Result<()> {
+    match test {
+        TestCommand::AgentFlow(args) => run_test_agent_flow(shell, args),
+    }
+}
+
+fn run_test_agent_flow(shell: &dyn Shell, args: TestAgentFlowArgs) -> Result<()> {
+    let cwd = std::env::current_dir().context("failed to get current directory")?;
+    let repo = RepoContext::discover(shell, &cwd)?;
+    let plan = plan_agent_flow_test(
+        &repo.repo_root,
+        &repo.git_dir,
+        &AgentFlowTestRequest {
+            scenario: args.scenario,
+            agent: args.agent,
+            mode: args.mode,
+            keep_sandbox: args.keep_sandbox,
+            artifacts_dir: args.artifacts_dir,
+            timeout_seconds: args.timeout_seconds,
+            no_build: args.no_build,
+        },
+    )?;
+    print_plan(&plan);
+    let result = run_agent_flow_test(shell, &repo.repo_root, &repo.git_dir, &plan)?;
+    print_sandbox_result(&result);
+    Ok(())
 }
 
 fn run_init(shell: &dyn Shell) -> Result<()> {
@@ -64,7 +108,7 @@ fn run_poll(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
     let context = load_execution_context(shell, zellij_session_override)?;
     let github = GhProjectClient::new(shell);
     let zellij = ZellijLauncher::new(shell);
-    match run_poll_cycle(&context, &github, &zellij)? {
+    match run_poll_cycle(shell, &context, &github, &zellij)? {
         PollCycleOutcome::NoEligibleIssue { project_title } => {
             println!(
                 "poll: no eligible backlog issues for repo={}/{} in project={}",
@@ -73,7 +117,7 @@ fn run_poll(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
         }
         PollCycleOutcome::Launched(launch) => {
             let launch_zellij =
-                resolve_launch_zellij_config(&context.config.zellij, launch.issue_number)?;
+                resolve_launch_zellij_config(&context.config.zellij, launch.issue_number, None)?;
             println!(
                 "poll: claimed issue #{} -> {} session_uuid={}",
                 launch.issue_number,
@@ -99,7 +143,7 @@ fn run_loop(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
 
     loop {
         println!("loop: cycle={cycle_number} started");
-        match run_poll_cycle(&context, &github, &zellij) {
+        match run_poll_cycle(shell, &context, &github, &zellij) {
             Ok(PollCycleOutcome::NoEligibleIssue { project_title }) => {
                 println!(
                     "loop: cycle={cycle_number} no eligible backlog issues in project={}",
@@ -107,8 +151,11 @@ fn run_loop(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
                 );
             }
             Ok(PollCycleOutcome::Launched(launch)) => {
-                let launch_zellij =
-                    resolve_launch_zellij_config(&context.config.zellij, launch.issue_number)?;
+                let launch_zellij = resolve_launch_zellij_config(
+                    &context.config.zellij,
+                    launch.issue_number,
+                    None,
+                )?;
                 println!(
                     "loop: cycle={cycle_number} launched issue #{} session_uuid={}",
                     launch.issue_number, launch.session_uuid
@@ -139,9 +186,11 @@ enum PollCycleOutcome {
 struct LaunchOutcome {
     issue_number: u64,
     session_uuid: String,
+    launched: bool,
 }
 
 fn run_poll_cycle(
+    shell: &dyn Shell,
     context: &ExecutionContext,
     github: &GhProjectClient<'_>,
     zellij: &ZellijLauncher<'_>,
@@ -159,7 +208,9 @@ fn run_poll_cycle(
         });
     };
 
-    let launch = run_issue_entrypoint(context, github, zellij, &snapshot, issue, false)?;
+    let launch = run_issue_entrypoint(
+        shell, context, github, zellij, &snapshot, issue, false, None,
+    )?;
     Ok(PollCycleOutcome::Launched(launch))
 }
 
@@ -168,6 +219,7 @@ fn run_manual_run(
     issue_ref: &str,
     debug: bool,
     zellij_session_override: Option<&str>,
+    launch_target_override: Option<LaunchTarget>,
 ) -> Result<()> {
     let context = load_execution_context(shell, zellij_session_override)?;
     let github = GhProjectClient::new(shell);
@@ -177,32 +229,167 @@ fn run_manual_run(
     let issue_number = parse_issue_ref(issue_ref)
         .with_context(|| format!("failed to parse issue reference: {issue_ref}"))?;
 
-    let issue = snapshot
-        .items
-        .iter()
-        .find(|item| {
-            item.issue_number == issue_number
-                && item.matches_repo(&context.repo.github_owner, &context.repo.github_repo)
-        })
-        .ok_or_else(|| anyhow::anyhow!("issue #{issue_number} is not linked to the project"))?;
+    let issue = prepare_manual_run_issue(&context, &github, &snapshot, issue_number)?;
 
-    let launch_zellij = resolve_launch_zellij_config(&context.config.zellij, issue.issue_number)?;
-    let launch = run_issue_entrypoint(&context, &github, &zellij, &snapshot, issue, debug)?;
-    println!(
-        "run: issue=#{} launched in zellij session_uuid={}",
-        launch.issue_number, launch.session_uuid
-    );
-    print_zellij_launch_target(&context.runtime, &launch.session_uuid, &launch_zellij);
+    let launch = run_issue_entrypoint(
+        shell,
+        &context,
+        &github,
+        &zellij,
+        &snapshot,
+        &issue,
+        debug,
+        launch_target_override,
+    )?;
+    if launch.launched {
+        let launch_zellij = resolve_launch_zellij_config(
+            &context.config.zellij,
+            launch.issue_number,
+            launch_target_override,
+        )?;
+        println!(
+            "run: issue=#{} launched in zellij session_uuid={}",
+            launch.issue_number, launch.session_uuid
+        );
+        print_zellij_launch_target(&context.runtime, &launch.session_uuid, &launch_zellij);
+    } else {
+        println!(
+            "run: issue=#{} finalized without launch session_uuid={}",
+            launch.issue_number, launch.session_uuid
+        );
+    }
     Ok(())
 }
 
+fn prepare_manual_run_issue(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+    snapshot: &ProjectSnapshot,
+    issue_number: u64,
+) -> Result<ProjectIssueItem> {
+    let repo_issue = github
+        .load_repo_issue(
+            &context.repo.repo_root,
+            &context.repo.github_owner,
+            &context.repo.github_repo,
+            issue_number,
+        )?
+        .ok_or_else(|| {
+            anyhow!(
+                "{}",
+                format_missing_issue_message(
+                    issue_number,
+                    &context.repo.github_owner,
+                    &context.repo.github_repo
+                )
+            )
+        })?;
+
+    anyhow::ensure!(
+        repo_issue.state == "OPEN",
+        "{}",
+        format_closed_issue_message(issue_number, &repo_issue.state, &repo_issue.url)
+    );
+
+    if let Some(issue) = snapshot.items.iter().find(|item| {
+        item.issue_number == issue_number
+            && item.matches_repo(&context.repo.github_owner, &context.repo.github_repo)
+    }) {
+        return ensure_issue_has_run_entry_status(context, github, snapshot, issue.clone());
+    }
+
+    attach_issue_to_project(context, github, snapshot, &repo_issue)
+}
+
+fn ensure_issue_has_run_entry_status(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+    snapshot: &ProjectSnapshot,
+    mut issue: ProjectIssueItem,
+) -> Result<ProjectIssueItem> {
+    if issue.status_name.is_some() {
+        return Ok(issue);
+    }
+
+    let backlog_status = context.config.issue_analysis_flow.statuses.backlog.as_str();
+    let backlog_option = snapshot.option_id_by_name(backlog_status)?;
+    github.update_status(
+        &context.repo.repo_root,
+        &context.config.github.project_id,
+        &issue.item_id,
+        &snapshot.status_field_id,
+        backlog_option,
+    )?;
+    println!(
+        "run: issue #{} did not have a project status; automatically set status to {}",
+        issue.issue_number, backlog_status
+    );
+    issue.status_name = Some(backlog_status.to_string());
+    issue.status_option_id = Some(backlog_option.to_string());
+    Ok(issue)
+}
+
+fn attach_issue_to_project(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+    snapshot: &ProjectSnapshot,
+    repo_issue: &RepoIssue,
+) -> Result<ProjectIssueItem> {
+    let backlog_status = context.config.issue_analysis_flow.statuses.backlog.as_str();
+    let backlog_option = snapshot.option_id_by_name(backlog_status)?;
+    let item_id = github
+        .add_issue_to_project(
+            &context.repo.repo_root,
+            &context.config.github.project_id,
+            &repo_issue.id,
+        )
+        .with_context(|| {
+            format_project_attachment_failure_message(
+                repo_issue.number,
+                &context.config.github.project_id,
+                &repo_issue.url,
+            )
+        })?;
+    github
+        .update_status(
+            &context.repo.repo_root,
+            &context.config.github.project_id,
+            &item_id,
+            &snapshot.status_field_id,
+            backlog_option,
+        )
+        .with_context(|| {
+            format_project_attachment_failure_message(
+                repo_issue.number,
+                &context.config.github.project_id,
+                &repo_issue.url,
+            )
+        })?;
+    println!(
+        "run: issue #{} was automatically added to project {} with status {}",
+        repo_issue.number, context.config.github.project_id, backlog_status
+    );
+
+    Ok(ProjectIssueItem {
+        item_id,
+        issue_number: repo_issue.number,
+        issue_state: repo_issue.state.clone(),
+        repo_owner: context.repo.github_owner.clone(),
+        repo_name: context.repo.github_repo.clone(),
+        status_name: Some(backlog_status.to_string()),
+        status_option_id: Some(backlog_option.to_string()),
+    })
+}
+
 fn run_issue_entrypoint(
+    shell: &dyn Shell,
     context: &ExecutionContext,
     github: &GhProjectClient<'_>,
     zellij: &ZellijLauncher<'_>,
     snapshot: &ProjectSnapshot,
     issue: &ProjectIssueItem,
     debug: bool,
+    launch_target_override: Option<LaunchTarget>,
 ) -> Result<LaunchOutcome> {
     let current_status = issue.status_name.as_deref().ok_or_else(|| {
         anyhow::anyhow!(
@@ -217,15 +404,24 @@ fn run_issue_entrypoint(
         &context.config.issue_implementation_flow.statuses,
     );
     if !decision.allowed {
+        let allowed_statuses = allowed_run_statuses(
+            &context.config.issue_analysis_flow.statuses,
+            &context.config.issue_implementation_flow.statuses,
+        );
         bail!(
-            "run denied for issue #{}: {}",
-            issue.issue_number,
-            decision.reason
+            "{}",
+            format_run_denied_message(issue.issue_number, current_status, &allowed_statuses)
         );
     }
     let stage = decision
         .stage
         .expect("allowed run decision must include stage");
+
+    if let Some(outcome) =
+        maybe_finalize_merged_implementation(shell, context, issue, current_status)?
+    {
+        return Ok(outcome);
+    }
 
     if let Err(error) = validate_stage_preconditions(context, issue.issue_number, stage) {
         if stage == FlowStage::Implementation {
@@ -235,7 +431,11 @@ fn run_issue_entrypoint(
             .with_context(|| format!("failed to validate {} preconditions", stage.as_str()));
     }
 
-    let launch_zellij = resolve_launch_zellij_config(&context.config.zellij, issue.issue_number)?;
+    let launch_zellij = resolve_launch_zellij_config(
+        &context.config.zellij,
+        issue.issue_number,
+        launch_target_override,
+    )?;
     let manifest = prepare_session_manifest(
         context,
         github,
@@ -269,6 +469,7 @@ fn run_issue_entrypoint(
     Ok(LaunchOutcome {
         issue_number: issue.issue_number,
         session_uuid: manifest.session_uuid,
+        launched: true,
     })
 }
 
@@ -395,13 +596,20 @@ fn prepare_session_manifest(
             &snapshot.status_field_id,
             snapshot.option_id_by_name(target_status)?,
         )?;
-        return context.runtime.create_claim_binding(
+        let manifest = context.runtime.create_claim_binding(
             &context.repo,
             &context.config.github.project_id,
             launch_zellij,
             issue.issue_number,
             stage,
             target_status,
+        )?;
+        return persist_stage_workspace(
+            context,
+            github,
+            &manifest.session_uuid,
+            issue.issue_number,
+            stage,
         );
     }
 
@@ -446,7 +654,93 @@ fn prepare_session_manifest(
         .runtime
         .update_issue_flow_status(issue.issue_number, target_status)?;
 
-    Ok(manifest)
+    persist_stage_workspace(
+        context,
+        github,
+        &manifest.session_uuid,
+        issue.issue_number,
+        stage,
+    )
+}
+
+fn persist_stage_workspace(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+    session_uuid: &str,
+    issue_number: u64,
+    stage: FlowStage,
+) -> Result<SessionManifest> {
+    let launch_context = render_launch_agent_context(context, github, issue_number, stage)?;
+    context.runtime.update_stage_workspace(
+        session_uuid,
+        &launch_context.branch,
+        Path::new(&launch_context.worktree_root),
+        &launch_context.artifacts_dir,
+    )
+}
+
+fn maybe_finalize_merged_implementation(
+    shell: &dyn Shell,
+    context: &ExecutionContext,
+    issue: &ProjectIssueItem,
+    current_status: &str,
+) -> Result<Option<LaunchOutcome>> {
+    if current_status
+        != context
+            .config
+            .issue_implementation_flow
+            .statuses
+            .waiting_for_code_review
+    {
+        return Ok(None);
+    }
+
+    let github = GhProjectClient::new(shell);
+    let launch_context = render_launch_agent_context(
+        context,
+        &github,
+        issue.issue_number,
+        FlowStage::Implementation,
+    )?;
+    if !canonical_pr_is_merged(shell, &context.repo.repo_root, &launch_context.branch)? {
+        return Ok(None);
+    }
+
+    let manifest = context
+        .runtime
+        .load_issue_index(issue.issue_number)?
+        .and_then(|issue_index| {
+            issue_index
+                .session_uuid_for_stage(FlowStage::Implementation)
+                .map(str::to_string)
+        })
+        .map(|session_uuid| context.runtime.load_session_manifest(&session_uuid))
+        .transpose()?
+        .flatten();
+    let target_status = finalize_merged_implementation(
+        shell,
+        &context.repo.repo_root,
+        &context.runtime,
+        &context.config,
+        manifest.as_ref(),
+        issue.issue_number,
+        &context.config.github.project_id,
+        &context.repo.github_owner,
+        &context.repo.github_repo,
+        &launch_context.branch,
+    )?;
+    println!(
+        "run: issue=#{} reconciled merged implementation PR -> {}",
+        issue.issue_number, target_status
+    );
+
+    Ok(Some(LaunchOutcome {
+        issue_number: issue.issue_number,
+        session_uuid: manifest
+            .map(|manifest| manifest.session_uuid)
+            .unwrap_or_else(|| "none".to_string()),
+        launched: false,
+    }))
 }
 
 fn mark_issue_as_blocked(
@@ -511,7 +805,11 @@ fn print_zellij_launch_target(
         .unwrap_or("pending");
 
     println!(
-        "launch target: zellij_session={} tab={} tab_id={} pane_id={} log={}",
+        "launch target: launch_target={} zellij_session={} tab={} tab_id={} pane_id={} log={}",
+        manifest
+            .as_ref()
+            .map(|session| session.zellij.launch_target.as_str())
+            .unwrap_or(zellij.launch_target.as_str()),
         session_id,
         tab_name,
         tab_id,
@@ -579,7 +877,7 @@ fn run_internal_bind_zellij_pane(shell: &dyn Shell, session_uuid: &str) -> Resul
 
 fn run_internal_launch_zellij_fixture(shell: &dyn Shell, issue_number: u64) -> Result<()> {
     let context = load_execution_context(shell, None)?;
-    let launch_zellij = resolve_launch_zellij_config(&context.config.zellij, issue_number)?;
+    let launch_zellij = resolve_launch_zellij_config(&context.config.zellij, issue_number, None)?;
     let manifest = context.runtime.create_claim_binding(
         &context.repo,
         &context.config.github.project_id,
@@ -618,6 +916,7 @@ fn run_internal_launch_zellij_fixture(shell: &dyn Shell, issue_number: u64) -> R
 
 fn run_internal_render_launch_agent_context(shell: &dyn Shell, issue_ref: &str) -> Result<()> {
     let context = load_execution_context(shell, None)?;
+    let github = GhProjectClient::new(shell);
     let issue_number = parse_issue_ref(issue_ref)
         .with_context(|| format!("failed to parse issue reference: {issue_ref}"))?;
     let flow_stage = std::env::var("AI_TEAMLEAD_FLOW_STAGE")
@@ -629,12 +928,14 @@ fn run_internal_render_launch_agent_context(shell: &dyn Shell, issue_ref: &str) 
             _ => None,
         })
         .unwrap_or(FlowStage::Analysis);
-    let rendered = render_launch_agent_context(&context, issue_number, flow_stage)?;
+    let rendered = render_launch_agent_context(&context, &github, issue_number, flow_stage)?;
 
     println!(
         "ISSUE_NUMBER={}",
         shell_quote(&rendered.issue_number.to_string())
     );
+    println!("ISSUE_TITLE={}", shell_quote(&rendered.issue_title));
+    println!("ISSUE_BODY={}", shell_quote(&rendered.issue_body));
     println!("REPO={}", shell_quote(&rendered.repo_name));
     println!("FLOW_STAGE={}", shell_quote(rendered.stage.as_str()));
     println!("BRANCH={}", shell_quote(&rendered.branch));
@@ -709,19 +1010,28 @@ fn resolve_zellij_session_name(
 fn resolve_launch_zellij_config(
     zellij: &crate::config::ZellijConfig,
     issue_number: u64,
+    launch_target_override: Option<LaunchTarget>,
 ) -> Result<crate::config::ZellijConfig> {
     let mut resolved = zellij.clone();
-    resolved.tab_name = render_zellij_tab_name(
-        &zellij.tab_name,
-        zellij.tab_name_template.as_deref(),
-        issue_number,
-    )?;
+    if let Some(launch_target_override) = launch_target_override {
+        resolved.launch_target = launch_target_override;
+    }
+    resolved.tab_name = match resolved.launch_target {
+        LaunchTarget::Pane => zellij.tab_name.clone(),
+        LaunchTarget::Tab => render_zellij_tab_name(
+            &zellij.tab_name,
+            zellij.tab_name_template.as_deref(),
+            issue_number,
+        )?,
+    };
     Ok(resolved)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LaunchAgentContext {
     issue_number: u64,
+    issue_title: String,
+    issue_body: String,
     repo_name: String,
     stage: FlowStage,
     branch: String,
@@ -733,12 +1043,19 @@ struct LaunchAgentContext {
 
 fn render_launch_agent_context(
     context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
     issue_number: u64,
     stage: FlowStage,
 ) -> Result<LaunchAgentContext> {
     let repo_name = context.repo.github_repo.clone();
     let home = std::env::var("HOME").context("HOME is not set")?;
     let issue_number_str = issue_number.to_string();
+    let issue = github.load_issue_details(
+        &context.repo.repo_root,
+        &context.repo.github_owner,
+        &context.repo.github_repo,
+        issue_number,
+    )?;
 
     let branch_template = match stage {
         FlowStage::Analysis => &context.config.launch_agent.analysis_branch_template,
@@ -792,6 +1109,8 @@ fn render_launch_agent_context(
 
     Ok(LaunchAgentContext {
         issue_number,
+        issue_title: issue.title,
+        issue_body: issue.body,
         repo_name,
         stage,
         branch,
@@ -805,7 +1124,7 @@ fn render_launch_agent_context(
 #[cfg(test)]
 mod tests {
     use super::{resolve_launch_zellij_config, resolve_zellij_session_name};
-    use crate::config::ZellijConfig;
+    use crate::config::{LaunchTarget, ZellijConfig};
 
     #[test]
     fn zellij_session_override_has_highest_priority() {
@@ -840,11 +1159,12 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "example".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Tab,
             tab_name_template: Some("#${ISSUE_NUMBER}".into()),
             layout: None,
         };
 
-        let resolved = resolve_launch_zellij_config(&zellij, 42).expect("resolved config");
+        let resolved = resolve_launch_zellij_config(&zellij, 42, None).expect("resolved config");
         assert_eq!(resolved.tab_name, "#42");
     }
 
@@ -853,12 +1173,44 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "example".into(),
             tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Pane,
             tab_name_template: None,
             layout: None,
         };
 
-        let resolved = resolve_launch_zellij_config(&zellij, 42).expect("resolved config");
+        let resolved = resolve_launch_zellij_config(&zellij, 42, None).expect("resolved config");
         assert_eq!(resolved.tab_name, "issue-analysis");
+    }
+
+    #[test]
+    fn pane_launch_target_ignores_issue_aware_tab_template() {
+        let zellij = ZellijConfig {
+            session_name: "example".into(),
+            tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Pane,
+            tab_name_template: Some("#${ISSUE_NUMBER}".into()),
+            layout: None,
+        };
+
+        let resolved = resolve_launch_zellij_config(&zellij, 42, None).expect("resolved config");
+        assert_eq!(resolved.launch_target, LaunchTarget::Pane);
+        assert_eq!(resolved.tab_name, "issue-analysis");
+    }
+
+    #[test]
+    fn cli_launch_target_override_beats_settings() {
+        let zellij = ZellijConfig {
+            session_name: "example".into(),
+            tab_name: "issue-analysis".into(),
+            launch_target: LaunchTarget::Pane,
+            tab_name_template: Some("#${ISSUE_NUMBER}".into()),
+            layout: None,
+        };
+
+        let resolved = resolve_launch_zellij_config(&zellij, 42, Some(LaunchTarget::Tab))
+            .expect("resolved config");
+        assert_eq!(resolved.launch_target, LaunchTarget::Tab);
+        assert_eq!(resolved.tab_name, "#42");
     }
 }
 
@@ -884,14 +1236,62 @@ mod launch_agent_tests {
     use crate::config::{
         Config, FlowStatuses, GithubConfig, ImplementationFlowStatuses, IssueAnalysisFlowConfig,
         IssueImplementationFlowConfig, LaunchAgentConfig, LaunchAgentGlobalArgsConfig,
-        RuntimeConfig, ZellijConfig,
+        LaunchTarget, RuntimeConfig, ZellijConfig,
     };
     use crate::domain::FlowStage;
+    use crate::github::GhProjectClient;
     use crate::repo::RepoContext;
     use crate::runtime::RuntimeLayout;
+    use crate::shell::Shell;
     use crate::templates::render_template;
+    use anyhow::{Result, anyhow};
+    use std::collections::BTreeMap;
+    use std::path::Path;
     use std::path::PathBuf;
     use tempfile::tempdir;
+
+    #[derive(Default)]
+    struct FakeShell {
+        responses: BTreeMap<String, String>,
+    }
+
+    impl FakeShell {
+        fn with_response(mut self, key: &str, value: &str) -> Self {
+            self.responses.insert(key.to_string(), value.to_string());
+            self
+        }
+    }
+
+    impl Shell for FakeShell {
+        fn run(&self, _cwd: &Path, program: &str, args: &[&str]) -> Result<String> {
+            let key = format!("{program} {}", args.join(" "));
+            self.responses
+                .get(&key)
+                .cloned()
+                .ok_or_else(|| anyhow!("missing fake response for: {key}"))
+        }
+
+        fn run_with_env(
+            &self,
+            cwd: &Path,
+            _envs: &[(&str, &str)],
+            program: &str,
+            args: &[&str],
+        ) -> Result<String> {
+            self.run(cwd, program, args)
+        }
+
+        fn spawn_with_env(
+            &self,
+            cwd: &Path,
+            _envs: &[(&str, &str)],
+            program: &str,
+            args: &[&str],
+            _stdout_stderr_log_path: Option<&Path>,
+        ) -> Result<()> {
+            self.run(cwd, program, args).map(|_| ())
+        }
+    }
 
     #[test]
     fn renders_launch_agent_templates() {
@@ -911,13 +1311,20 @@ mod launch_agent_tests {
 
         let context = LaunchAgentContext {
             issue_number: 42,
+            issue_title: "Issue title".into(),
+            issue_body: "Issue body".into(),
             repo_name: "teamlead".into(),
             stage: FlowStage::Analysis,
             branch,
             worktree_root: worktree,
             artifacts_dir: artifacts,
             claude_global_args: vec!["--permission-mode".into(), "auto".into()],
-            codex_global_args: vec!["--full-auto".into()],
+            codex_global_args: vec![
+                "--ask-for-approval".into(),
+                "never".into(),
+                "--sandbox".into(),
+                "workspace-write".into(),
+            ],
         };
 
         assert_eq!(context.branch, "analysis/issue-42");
@@ -928,7 +1335,7 @@ mod launch_agent_tests {
         assert_eq!(context.artifacts_dir, "specs/issues/42");
         assert_eq!(
             shell_quote_array(&context.codex_global_args),
-            "('--full-auto')"
+            "('--ask-for-approval' 'never' '--sandbox' 'workspace-write')"
         );
     }
 
@@ -939,14 +1346,29 @@ mod launch_agent_tests {
         std::fs::create_dir_all(repo_root.join(".git")).expect("git dir");
 
         let context = test_execution_context(repo_root);
-        let rendered = render_launch_agent_context(&context, 42, FlowStage::Analysis)
+        let shell = FakeShell::default().with_response(
+            "gh issue view 42 --repo dapi/example --json number,title,body,url",
+            r#"{"number":42,"title":"Issue title","body":"Issue body","url":"https://github.com/dapi/example/issues/42"}"#,
+        );
+        let github = GhProjectClient::new(&shell);
+        let rendered = render_launch_agent_context(&context, &github, 42, FlowStage::Analysis)
             .expect("render launch context");
 
-        assert_eq!(rendered.codex_global_args, vec!["--full-auto".to_string()]);
+        assert_eq!(
+            rendered.codex_global_args,
+            vec![
+                "--ask-for-approval".to_string(),
+                "never".to_string(),
+                "--sandbox".to_string(),
+                "workspace-write".to_string(),
+            ]
+        );
         assert_eq!(
             rendered.claude_global_args,
             vec!["--permission-mode".to_string(), "auto".to_string()]
         );
+        assert_eq!(rendered.issue_title, "Issue title");
+        assert_eq!(rendered.issue_body, "Issue body");
     }
 
     #[test]
@@ -1020,6 +1442,7 @@ mod launch_agent_tests {
                         implementation_in_progress: "Implementation In Progress".into(),
                         waiting_for_ci: "Waiting for CI".into(),
                         waiting_for_code_review: "Waiting for Code Review".into(),
+                        done: "Done".into(),
                         implementation_blocked: "Implementation Blocked".into(),
                     },
                 },
@@ -1030,6 +1453,7 @@ mod launch_agent_tests {
                 zellij: ZellijConfig {
                     session_name: "example".into(),
                     tab_name: "issue-analysis".into(),
+                    launch_target: LaunchTarget::Pane,
                     tab_name_template: None,
                     layout: None,
                 },

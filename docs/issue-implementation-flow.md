@@ -3,7 +3,7 @@
 Статус: draft, evolving
 Владелец: владелец репозитория
 Роль: SSOT для flow реализации issue
-Последнее обновление: 2026-03-14
+Последнее обновление: 2026-03-15
 
 ## Назначение
 
@@ -13,6 +13,7 @@
 
 - изменения реализованы, запушены и ждут обязательные CI checks;
 - изменения готовы к human code review;
+- merged implementation PR закрывает issue и переводит ее в terminal state;
 - реализация возвращена на доработку;
 - реализация заблокирована технической или продуктовой проблемой.
 
@@ -31,6 +32,8 @@
 
 - issue переведена в `Waiting for CI`;
 - или issue переведена в `Waiting for Code Review`;
+- или issue переведена в `Done` и закрыта после merge канонического
+  implementation PR;
 - или issue возвращена в `Implementation In Progress`;
 - или issue переведена в `Implementation Blocked`.
 
@@ -46,9 +49,8 @@
 ## Вне scope
 
 - merge automation;
-- deploy, release и post-merge operation flow;
+- deploy, release и расширенный post-merge operation flow;
 - автоматическое принятие code review;
-- автоматическое закрытие issue после merge;
 - параллельные implementation PR для одной issue.
 
 ## Политика развития
@@ -82,6 +84,13 @@ Repo-local runtime state допускается только для:
 Runtime state не должен подменять project status и не должен использоваться для
 обхода допустимых переходов.
 
+Дополнительное правило:
+
+- поля runtime вида `tracked_pr_*`, `tracked_pr_url` и
+  `last_known_flow_status` не входят в канонический semantic contract;
+- если такие поля временно существуют, они допускаются только как
+  cache/diagnostic metadata.
+
 ## Связь с `run`
 
 Пользовательский контракт остается единым:
@@ -101,17 +110,21 @@ Runtime state не должен подменять project status и не дол
 
 ## Approved analysis artifacts
 
-Implementation flow может стартовать только если approved analysis artifacts
+Implementation flow может стартовать только если analysis artifacts
 доступны как versioned вход в:
 
 - `specs/issues/${ISSUE_NUMBER}/`
 
 Минимальный контракт:
 
-- пакет анализа имеет `Статус согласования: approved`;
-- пакет анализа фиксирует `Approved By` и `Approved At`;
-- если approved artifacts отсутствуют или невалидны, implementation flow
-  завершается blocker-исходом, а не продолжает работу по догадкам.
+- артефакты зафиксированы командой `complete-stage --outcome plan-ready`
+  (commit + push в analysis branch);
+- issue переведена в `Ready for Implementation` через human gate
+  (`Waiting for Plan Review` → `Ready for Implementation`) — сам переход
+  является сигналом approval;
+- если артефакты отсутствуют или issue не находится в статусе
+  `Ready for Implementation`, implementation flow завершается
+  blocker-исходом, а не продолжает работу по догадкам.
 
 ## Статусы GitHub Project
 
@@ -127,7 +140,10 @@ Implementation flow может стартовать только если approv
    обязательные CI checks.
 4. `Waiting for Code Review`
    Значение: обязательные quality gates пройдены, issue готова к human review.
-5. `Implementation Blocked`
+5. `Done`
+   Значение: канонический implementation PR merged, issue закрыта,
+   бизнес-lifecycle implementation stage завершен.
+6. `Implementation Blocked`
    Значение: реализация не может продолжаться без внешнего вмешательства.
 
 ## Правила переходов
@@ -139,6 +155,7 @@ Implementation flow может стартовать только если approv
 - `Implementation In Progress` -> `Implementation Blocked`
 - `Waiting for CI` -> `Waiting for Code Review`
 - `Waiting for CI` -> `Implementation In Progress`
+- `Waiting for Code Review` -> `Done`
 - `Waiting for Code Review` -> `Implementation In Progress`
 - `Implementation Blocked` -> `Implementation In Progress`
 
@@ -148,7 +165,8 @@ Implementation flow может стартовать только если approv
   без coding stage;
 - прямой переход из `Implementation In Progress` в `Waiting for Code Review`
   без PR/CI contract;
-- автоматический merge и автоматическое закрытие issue в рамках этого flow.
+- прямой переход из `Implementation In Progress` в `Done` без merge
+  канонического implementation PR.
 
 ## Условия входа
 
@@ -164,8 +182,8 @@ Issue может быть запущена через implementation flow тол
   `Waiting for Code Review`,
   `Implementation Blocked`;
 - approved analysis artifacts доступны и валидны;
-- для re-entry статусов существует stage-specific runtime-binding или
-  документированный способ его восстановить.
+- для re-entry статусов runtime-binding может отсутствовать, если execution
+  context может быть восстановлен из GitHub и наблюдаемого git state.
 
 ## Шаги flow
 
@@ -193,15 +211,49 @@ Issue может быть запущена через implementation flow тол
 `Implementation Blocked`:
 
 - повторный `run` допускается только как явное operator-intent действие;
-- issue переводится обратно в `Implementation In Progress`;
-- stage-specific binding и implementation branch lifecycle переиспользуются.
+- `run` сначала делает reconcile по GitHub Project status, каноническому
+  implementation PR, branch refs и worktree, а уже потом выбирает дальнейшее
+  действие;
+- issue с merged implementation PR при статусе `Waiting for Code Review`
+  терминализируется в `Done` без нового coding launch;
+- в остальных случаях issue переводится обратно в `Implementation In Progress`;
+- stage-specific binding и implementation branch lifecycle переиспользуются,
+  если они доступны; иначе execution context восстанавливается заново.
+
+## Каноническая implementation branch и observed state
+
+Post-merge path опирается не на произвольный merge commit и не на обязательную
+runtime metadata, а на канонический branch contract.
+
+Минимальный contract:
+
+- для implementation issue `N` каноническая branch называется
+  `implementation/issue-N`;
+- implementation PR определяется по `headRefName == implementation/issue-N`;
+- `run <issue>` и post-merge reconciliation читают PR state именно через этот
+  branch contract;
+- если найдено больше одного PR для канонической branch, flow считается
+  неоднозначным и требует явной диагностики.
+
+Observed state для implementation re-entry выводится из:
+
+- project status в GitHub Project;
+- PR по canonical implementation branch;
+- remote branch presence;
+- local branch presence;
+- local worktree presence.
 
 ### 3. Реализация
 
 Агент или разработчик:
 
 - читает approved analysis artifacts;
+- восстанавливает documentation delta из approved implementation plan:
+  какие канонические документы, summary-слои и шаблоны должны быть обновлены;
 - восстанавливает implementation context;
+- сначала обновляет или подготавливает изменение обязательных документов, если
+  они меняют контракт реализации; если документационные изменения не нужны, это
+  должно быть явно подтверждено текущим планом;
 - вносит кодовые изменения;
 - запускает обязательные локальные проверки;
 - при необходимости обновляет связанные docs и follow-up ADR.
@@ -215,6 +267,7 @@ Implementation stage завершается через stage-aware internal CLI-
 
 - `ready-for-ci`
 - `ready-for-review`
+- `merged`
 - `needs-rework`
 - `blocked`
 
@@ -228,6 +281,13 @@ Implementation stage завершается через stage-aware internal CLI-
   - подтверждает, что обязательные CI checks зеленые;
   - при необходимости переводит PR в ready-for-review;
   - переводит issue в `Waiting for Code Review`.
+- `merged`:
+  - подтверждает, что канонический implementation PR merged в default branch;
+  - переводит issue в `Done`;
+  - закрывает GitHub issue;
+  - помечает implementation session как completed;
+  - выполняет best-effort cleanup implementation worktree и local branch
+    без отката terminal business result.
 - `needs-rework`:
   - сохраняет изменения и диагностику;
   - возвращает issue в `Implementation In Progress`.
@@ -246,7 +306,9 @@ Human gate обязателен минимум в двух местах:
 
 - зеленый CI не заменяет human review;
 - review feedback может вернуть issue в `Implementation In Progress`;
-- merge и закрытие issue находятся вне scope текущего flow.
+- merge канонического implementation PR завершает implementation lifecycle в
+  пределах этого flow;
+- release и deploy после merge остаются отдельным будущим flow.
 
 ## Протокол оператора
 
@@ -263,6 +325,9 @@ Human gate обязателен минимум в двух местах:
    `Implementation Blocked`.
 4. Принять реализацию к review.
    Результат: issue оказывается в `Waiting for Code Review`.
+5. Завершить lifecycle после merge implementation PR.
+   Результат: `run <issue>` или `complete-stage --outcome merged` переводит
+   issue в `Done`, закрывает ее и выполняет cleanup.
 
 ## Конфигурация
 
@@ -275,6 +340,7 @@ issue_implementation_flow:
     implementation_in_progress: "Implementation In Progress"
     waiting_for_ci: "Waiting for CI"
     waiting_for_code_review: "Waiting for Code Review"
+    done: "Done"
     implementation_blocked: "Implementation Blocked"
 
 launch_agent:
@@ -285,6 +351,34 @@ launch_agent:
 
 Точный runtime и launcher contract задаются связанными ADR и feature-docs.
 
+## Как проверяем
+
+Критерии корректности implementation flow:
+
+- `run <issue>` корректно dispatch-ит issue в implementation flow при статусах
+  из implementation lifecycle
+- переход `Ready for Implementation` -> `Implementation In Progress` создает
+  stage-specific session-binding и подготавливает implementation branch/worktree
+- re-entry для `Implementation In Progress` переиспользует существующий
+  implementation context
+- re-entry для `Waiting for CI`, `Waiting for Code Review`,
+  `Implementation Blocked` выполняет reconcile по GitHub Project status, PR и
+  branch state до выбора действия
+- `complete-stage` корректно переводит issue в target-статус для каждого
+  допустимого outcome
+- outcome `merged` терминализирует issue в `Done`, закрывает GitHub issue и
+  выполняет best-effort cleanup
+- запрещенные переходы невозможны через CLI
+- отсутствие approved analysis artifacts блокирует вход в implementation flow
+- GitHub Project status остается единственным источником истины
+
+Инварианты:
+
+- implementation flow не запускается без approved analysis artifacts
+- статус в GitHub Project меняется до старта coding stage
+- `run` не создает дублирующих implementation PR для одной issue
+- runtime state не подменяет GitHub Project status
+
 ## Связанные документы
 
 - [README.md](../README.md)
@@ -293,6 +387,8 @@ launch_agent:
 - [adr/0024-stage-aware-run-dispatch.md](./adr/0024-stage-aware-run-dispatch.md)
 - [adr/0025-stage-aware-runtime-bindings.md](./adr/0025-stage-aware-runtime-bindings.md)
 - [adr/0026-stage-aware-complete-stage.md](./adr/0026-stage-aware-complete-stage.md)
+- [adr/0027-post-merge-implementation-lifecycle.md](./adr/0027-post-merge-implementation-lifecycle.md)
+- [adr/0028-github-first-reconcile-and-runtime-cache-only.md](./adr/0028-github-first-reconcile-and-runtime-cache-only.md)
 
 ## Журнал изменений
 
@@ -302,3 +398,18 @@ launch_agent:
 - зафиксирован единый `run <issue>` как stage-aware entrypoint
 - добавлена status model для implementation lifecycle
 - добавлен stage-aware finalization contract для implementation outcomes
+- добавлен terminal post-merge path с `Done` и cleanup
+
+### 2026-03-15
+
+- SSOT уточнен в сторону GitHub-first reconcile
+- `tracked PR metadata` и `last_known_flow_status` переведены в роль
+  cache/diagnostic metadata, а не semantic source of truth
+- добавлен [ADR-0028](./adr/0028-github-first-reconcile-and-runtime-cache-only.md)
+  как accepted replacement для соответствующих частей ADR-0025/0026/0027
+- добавлено требование явно восстанавливать и выполнять план изменений
+  документации в implementation stage
+- упрощён контракт approved analysis artifacts: approval определяется
+  фактом commit через `complete-stage` и переходом issue в
+  `Ready for Implementation` через human gate; отдельные metadata-поля
+  (`Статус согласования`, `Approved By`, `Approved At`) убраны

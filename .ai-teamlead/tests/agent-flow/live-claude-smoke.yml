@@ -1,0 +1,11 @@
+name: live-claude-smoke
+description: Локальный smoke-сценарий для live `claude` через тот же sandbox path
+mode: live
+agent: claude
+fixtures:
+  github_stub: basic-backlog.json
+commands:
+  - ai-teamlead run https://github.com/dapi/ai-teamlead/issues/38
+assertions:
+  - type: issue_status
+    equals: Waiting for Plan Review

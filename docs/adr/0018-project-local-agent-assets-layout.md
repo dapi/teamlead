@@ -1,4 +1,4 @@
-# ADR-0018: project-local agent assets layout
+# ADR-0018: структура project-local агентских ресурсов
 
 Статус: accepted
 Дата: 2026-03-13

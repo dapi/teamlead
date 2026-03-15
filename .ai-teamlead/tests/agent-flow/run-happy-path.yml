@@ -1,0 +1,14 @@
+name: run-happy-path
+description: Базовый deterministic `stub`-сценарий для platform preflight и CI
+mode: stub
+agent: stub
+fixtures:
+  github_stub: basic-backlog.json
+  repo_state: clean
+commands:
+  - ai-teamlead run https://github.com/dapi/ai-teamlead/issues/38
+assertions:
+  - type: exit_code
+    equals: 0
+  - type: issue_status
+    equals: Waiting for Plan Review

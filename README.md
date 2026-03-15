@@ -160,7 +160,8 @@ Flow реализации и handoff после принятия плана вы
 - `run` сам определяет, что issue уже находится в implementation lifecycle;
 - реализация опирается на approved analysis artifacts;
 - implementation stage ведет issue через `Implementation In Progress`,
-  `Waiting for CI`, `Waiting for Code Review` и `Implementation Blocked`.
+  `Waiting for CI`, `Waiting for Code Review`, `Done` и
+  `Implementation Blocked`.
 
 ## Статусы проекта
 
@@ -183,6 +184,7 @@ Flow реализации и handoff после принятия плана вы
 - `Implementation In Progress`
 - `Waiting for CI`
 - `Waiting for Code Review`
+- `Done`
 - `Implementation Blocked`
 
 ## Конфигурация
@@ -243,6 +245,7 @@ defaulted-поля отражены в закомментированном ви
 #     implementation_in_progress: "Implementation In Progress"
 #     waiting_for_ci: "Waiting for CI"
 #     waiting_for_code_review: "Waiting for Code Review"
+#     done: "Done"
 #     implementation_blocked: "Implementation Blocked"
 #
 # runtime:
@@ -252,15 +255,27 @@ defaulted-поля отражены в закомментированном ви
 # zellij:
 #   session_name: "${REPO}"
 #   tab_name: "issue-analysis"
-#   layout: "compact"  # opt-in example, not runtime default
+#   tab_name_template: "#${ISSUE_NUMBER}"
+#   layout: "compact"
 #
 # launch_agent:
 #   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
 #   worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
 #   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+#   global_args:
+#     claude:
+#       - "--permission-mode"
+#       - "auto"
+#     codex:
+#       - "--full-auto"
 #   implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
 #   implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
 #   implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+#
+#   # opt-in example:
+#   # global_args:
+#   #   claude:
+#   #     - "--dangerously-skip-permissions"
 ```
 
 `zellij.session_name` задает versioned fallback для target session, а

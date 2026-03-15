@@ -5,9 +5,10 @@ use anyhow::{Context, Result, anyhow, bail};
 
 use crate::config::{Config, FlowStatuses, ImplementationFlowStatuses};
 use crate::domain::FlowStage;
-use crate::github::{GhProjectClient, ProjectIssueItem};
+use crate::github::{GhProjectClient, ProjectIssueItem, PullRequestDetails, PullRequestSummary};
 use crate::runtime::{RuntimeLayout, SessionManifest};
 use crate::shell::Shell;
+use crate::templates::render_template;
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::ValueEnum)]
 pub enum StageOutcome {
@@ -15,6 +16,7 @@ pub enum StageOutcome {
     NeedsClarification,
     ReadyForCi,
     ReadyForReview,
+    Merged,
     NeedsRework,
     Blocked,
 }
@@ -38,6 +40,7 @@ impl StageOutcome {
             (FlowStage::Implementation, Self::ReadyForReview) => {
                 &implementation_statuses.waiting_for_code_review
             }
+            (FlowStage::Implementation, Self::Merged) => &implementation_statuses.done,
             (FlowStage::Implementation, Self::NeedsRework) => {
                 &implementation_statuses.implementation_in_progress
             }
@@ -59,10 +62,79 @@ impl StageOutcome {
             Self::NeedsClarification => "needs-clarification",
             Self::ReadyForCi => "ready-for-ci",
             Self::ReadyForReview => "ready-for-review",
+            Self::Merged => "merged",
             Self::NeedsRework => "needs-rework",
             Self::Blocked => "blocked",
         }
     }
+}
+
+pub fn canonical_pr_is_merged(
+    shell: &dyn Shell,
+    repo_root: &Path,
+    canonical_branch: &str,
+) -> Result<bool> {
+    Ok(
+        resolve_canonical_pull_request(shell, repo_root, canonical_branch)?
+            .map(|pull_request| pull_request.is_merged())
+            .unwrap_or(false),
+    )
+}
+
+pub fn finalize_merged_implementation(
+    shell: &dyn Shell,
+    repo_root: &Path,
+    runtime: &RuntimeLayout,
+    config: &Config,
+    manifest: Option<&SessionManifest>,
+    issue_number: u64,
+    project_id: &str,
+    github_owner: &str,
+    github_repo: &str,
+    canonical_branch: &str,
+) -> Result<String> {
+    if let Some(manifest) = manifest {
+        anyhow::ensure!(
+            manifest.stage == FlowStage::Implementation,
+            "merged finalization requires implementation session, got '{}'",
+            manifest.stage.as_str()
+        );
+    }
+    let pull_request = resolve_canonical_pull_request(shell, repo_root, canonical_branch)?
+        .ok_or_else(|| {
+            anyhow!("canonical implementation PR is missing for '{canonical_branch}'")
+        })?;
+    anyhow::ensure!(
+        pull_request.is_merged(),
+        "canonical implementation PR #{} is not merged",
+        pull_request.number
+    );
+
+    let github = GhProjectClient::new(shell);
+    let snapshot = github.load_project_snapshot(repo_root, project_id)?;
+    let issue_item = find_project_item(&snapshot.items, issue_number, github_owner, github_repo)?;
+    let target_status = config.issue_implementation_flow.statuses.done.as_str();
+    let option_id = snapshot.option_id_by_name(target_status)?;
+
+    github.update_status(
+        repo_root,
+        project_id,
+        &issue_item.item_id,
+        &snapshot.status_field_id,
+        option_id,
+    )?;
+
+    if issue_item.issue_state == "OPEN" {
+        github.close_issue(repo_root, issue_number)?;
+    }
+
+    runtime.update_issue_flow_status(issue_number, target_status)?;
+    if let Some(manifest) = manifest {
+        runtime.update_session_status(&manifest.session_uuid, "completed")?;
+        cleanup_implementation_artifacts(shell, repo_root, manifest);
+    }
+
+    Ok(target_status.to_string())
 }
 
 #[derive(Debug, Clone)]
@@ -112,7 +184,7 @@ fn execute_complete_stage(
         .load_session_manifest(session_uuid)?
         .ok_or_else(|| anyhow!("session not found: {session_uuid}"))?;
 
-    if manifest.status == "completed" {
+    if manifest.status == "completed" && !matches!(context.outcome, StageOutcome::Merged) {
         eprintln!("complete-stage: session {session_uuid} is already completed");
         return Ok(());
     }
@@ -124,6 +196,29 @@ fn execute_complete_stage(
         manifest.stage.as_str(),
         context.stage.as_str()
     );
+
+    if matches!(context.outcome, StageOutcome::Merged) {
+        let target_status = finalize_merged_implementation(
+            shell,
+            &context.repo_root,
+            &runtime,
+            &config,
+            Some(&manifest),
+            manifest.issue_number,
+            &manifest.project_id,
+            &manifest.github_owner,
+            &manifest.github_repo,
+            &canonical_implementation_branch(&config, &manifest)?,
+        )?;
+        println!(
+            "complete-stage: issue=#{} stage={} outcome={} status={}",
+            manifest.issue_number,
+            context.stage.as_str(),
+            context.outcome.as_str(),
+            target_status
+        );
+        return Ok(());
+    }
 
     let branch = if context.branch == default_branch_sentinel(context.stage) {
         format!(
@@ -154,6 +249,7 @@ fn execute_complete_stage(
         git_push(shell, &context.worktree_root, &branch)?;
     }
 
+    let mut tracked_pr = None;
     if matches!(
         context.outcome,
         StageOutcome::PlanReady | StageOutcome::ReadyForCi | StageOutcome::ReadyForReview
@@ -169,7 +265,7 @@ fn execute_complete_stage(
             &artifacts_dir,
             &artifact_files,
         );
-        create_draft_pr_if_needed(
+        tracked_pr = create_draft_pr_if_needed(
             shell,
             &context.worktree_root,
             &branch,
@@ -183,6 +279,8 @@ fn execute_complete_stage(
     {
         mark_pr_ready_if_possible(shell, &context.worktree_root, &branch)?;
     }
+
+    let _ = tracked_pr.or_else(|| find_existing_pr(shell, &context.worktree_root, &branch));
 
     let target_status = context.outcome.target_status(
         context.stage,
@@ -286,7 +384,7 @@ fn git_add_and_commit(
 fn git_push(shell: &dyn Shell, worktree_root: &Path, branch: &str) -> Result<()> {
     shell
         .run(worktree_root, "git", &["push", "origin", branch])
-        .context("failed to push analysis branch")?;
+        .context("failed to push stage branch")?;
     Ok(())
 }
 
@@ -296,22 +394,10 @@ fn create_draft_pr_if_needed(
     branch: &str,
     title: &str,
     body: &str,
-) -> Result<()> {
-    match shell.run(
-        worktree_root,
-        "gh",
-        &[
-            "pr", "list", "--head", branch, "--json", "number", "--jq", "length",
-        ],
-    ) {
-        Ok(count) if count.trim() != "0" => {
-            eprintln!("complete-stage: draft PR already exists for branch {branch}");
-            return Ok(());
-        }
-        Ok(_) => {} // count == 0, proceed to create
-        Err(e) => {
-            eprintln!("complete-stage: warning: failed to check existing PRs: {e}");
-        }
+) -> Result<Option<PullRequestSummary>> {
+    if let Some(pr) = find_existing_pr(shell, worktree_root, branch) {
+        eprintln!("complete-stage: draft PR already exists for branch {branch}");
+        return Ok(Some(pr));
     }
 
     let result = shell.run(
@@ -323,7 +409,8 @@ fn create_draft_pr_if_needed(
         Ok(url) => println!("complete-stage: created draft PR: {url}"),
         Err(e) => eprintln!("complete-stage: warning: failed to create draft PR: {e}"),
     }
-    Ok(())
+
+    Ok(find_existing_pr(shell, worktree_root, branch))
 }
 
 fn mark_pr_ready_if_possible(shell: &dyn Shell, worktree_root: &Path, branch: &str) -> Result<()> {
@@ -340,6 +427,21 @@ fn mark_pr_ready_if_possible(shell: &dyn Shell, worktree_root: &Path, branch: &s
     Ok(())
 }
 
+fn find_existing_pr(
+    shell: &dyn Shell,
+    worktree_root: &Path,
+    branch: &str,
+) -> Option<PullRequestSummary> {
+    let github = GhProjectClient::new(shell);
+    match github.list_pull_requests_for_head(worktree_root, branch) {
+        Ok(mut prs) => prs.drain(..).next(),
+        Err(error) => {
+            eprintln!("complete-stage: warning: failed to check existing PRs: {error}");
+            None
+        }
+    }
+}
+
 fn update_project_status(
     shell: &dyn Shell,
     repo_root: &Path,
@@ -348,7 +450,12 @@ fn update_project_status(
 ) -> Result<()> {
     let github = GhProjectClient::new(shell);
     let snapshot = github.load_project_snapshot(repo_root, &manifest.project_id)?;
-    let issue_item = find_project_item(&snapshot.items, manifest)?;
+    let issue_item = find_project_item(
+        &snapshot.items,
+        manifest.issue_number,
+        &manifest.github_owner,
+        &manifest.github_repo,
+    )?;
     let option_id = snapshot.option_id_by_name(target_status)?;
 
     github.update_status(
@@ -361,22 +468,82 @@ fn update_project_status(
     Ok(())
 }
 
+fn resolve_canonical_pull_request(
+    shell: &dyn Shell,
+    repo_root: &Path,
+    canonical_branch: &str,
+) -> Result<Option<PullRequestDetails>> {
+    let github = GhProjectClient::new(shell);
+    github.resolve_pull_request_for_head(repo_root, canonical_branch)
+}
+
+fn canonical_implementation_branch(config: &Config, manifest: &SessionManifest) -> Result<String> {
+    if let Some(branch) = manifest.stage_branch.as_deref() {
+        return Ok(branch.to_string());
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    let issue_number = manifest.issue_number.to_string();
+    Ok(render_template(
+        &config.launch_agent.implementation_branch_template,
+        &[
+            ("HOME", home.as_str()),
+            ("REPO", manifest.github_repo.as_str()),
+            ("ISSUE_NUMBER", issue_number.as_str()),
+        ],
+    ))
+}
+
+fn cleanup_implementation_artifacts(
+    shell: &dyn Shell,
+    repo_root: &Path,
+    manifest: &SessionManifest,
+) {
+    if let Some(worktree_root) = manifest.stage_worktree_root.as_deref()
+        && worktree_root.exists()
+    {
+        match shell.run(worktree_root, "git", &["status", "--short"]) {
+            Ok(status) if status.trim().is_empty() => {
+                if let Err(error) = shell.run(
+                    repo_root,
+                    "git",
+                    &["worktree", "remove", &worktree_root.display().to_string()],
+                ) {
+                    eprintln!(
+                        "complete-stage: warning: failed to remove worktree {}: {error}",
+                        worktree_root.display()
+                    );
+                }
+            }
+            Ok(_) => eprintln!(
+                "complete-stage: warning: implementation worktree {} has local changes, skipping cleanup",
+                worktree_root.display()
+            ),
+            Err(error) => eprintln!(
+                "complete-stage: warning: failed to inspect worktree {}: {error}",
+                worktree_root.display()
+            ),
+        }
+    }
+
+    if let Some(branch) = manifest.stage_branch.as_deref() {
+        if let Err(error) = shell.run(repo_root, "git", &["branch", "-d", branch]) {
+            eprintln!("complete-stage: warning: failed to delete local branch {branch}: {error}");
+        }
+    }
+}
+
 fn find_project_item<'a>(
     items: &'a [ProjectIssueItem],
-    manifest: &SessionManifest,
+    issue_number: u64,
+    github_owner: &str,
+    github_repo: &str,
 ) -> Result<&'a ProjectIssueItem> {
     items
         .iter()
         .find(|item| {
-            item.issue_number == manifest.issue_number
-                && item.matches_repo(&manifest.github_owner, &manifest.github_repo)
+            item.issue_number == issue_number && item.matches_repo(github_owner, github_repo)
         })
-        .ok_or_else(|| {
-            anyhow!(
-                "issue #{} not found in project snapshot",
-                manifest.issue_number
-            )
-        })
+        .ok_or_else(|| anyhow!("issue #{} not found in project snapshot", issue_number))
 }
 
 fn collect_artifact_files(worktree_root: &Path, artifacts_dir: &str) -> Result<Vec<String>> {
@@ -462,6 +629,7 @@ mod tests {
             implementation_in_progress: "Implementation In Progress".into(),
             waiting_for_ci: "Waiting for CI".into(),
             waiting_for_code_review: "Waiting for Code Review".into(),
+            done: "Done".into(),
             implementation_blocked: "Implementation Blocked".into(),
         }
     }
@@ -469,7 +637,7 @@ mod tests {
     #[test]
     fn parses_valid_outcomes_via_value_enum() {
         let variants = StageOutcome::value_variants();
-        assert_eq!(variants.len(), 6);
+        assert_eq!(variants.len(), 7);
 
         let plan_ready = StageOutcome::from_str("plan-ready", true).unwrap();
         assert_eq!(plan_ready, StageOutcome::PlanReady);
@@ -482,6 +650,9 @@ mod tests {
 
         let ready_for_review = StageOutcome::from_str("ready-for-review", true).unwrap();
         assert_eq!(ready_for_review, StageOutcome::ReadyForReview);
+
+        let merged = StageOutcome::from_str("merged", true).unwrap();
+        assert_eq!(merged, StageOutcome::Merged);
 
         let needs_rework = StageOutcome::from_str("needs-rework", true).unwrap();
         assert_eq!(needs_rework, StageOutcome::NeedsRework);
@@ -549,6 +720,16 @@ mod tests {
                 )
                 .unwrap(),
             "Waiting for Code Review"
+        );
+        assert_eq!(
+            StageOutcome::Merged
+                .target_status(
+                    FlowStage::Implementation,
+                    &analysis_statuses,
+                    &implementation_statuses,
+                )
+                .unwrap(),
+            "Done"
         );
         assert_eq!(
             StageOutcome::NeedsRework
@@ -849,8 +1030,8 @@ mod tests {
             .with_response("git commit -m analysis(#15): SDD готов", "")
             .with_response("git push origin analysis/issue-15", "")
             .with_response(
-                "gh pr list --head analysis/issue-15 --json number --jq length",
-                "0",
+                "gh pr list --head analysis/issue-15 --json number,url",
+                "[]",
             )
             .with_response(
                 "gh pr create --draft --title analysis(#15): SDD готов --body Ref https://github.com/dapi/ai-teamlead/issues/15",
@@ -944,7 +1125,7 @@ mod tests {
             .with_response("git commit -m analysis(#15): SDD готов", "")
             .with_response("git push origin analysis/issue-15", "")
             .with_error(
-                "gh pr list --head analysis/issue-15 --json number --jq length",
+                "gh pr list --head analysis/issue-15 --json number,url",
                 "transient gh failure",
             )
             .with_response(
@@ -972,14 +1153,129 @@ mod tests {
         assert!(
             calls
                 .iter()
-                .any(|call| call
-                    == "gh pr list --head analysis/issue-15 --json number --jq length")
+                .any(|call| call == "gh pr list --head analysis/issue-15 --json number,url")
         );
         assert!(
             calls
                 .iter()
                 .any(|call| call
                     .starts_with("gh pr create --draft --title analysis(#15): SDD готов"))
+        );
+    }
+
+    #[test]
+    fn merged_finalization_closes_issue_and_cleans_up_without_git_commit_flow() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        let worktree_root = temp.path().join("worktrees/implementation/issue-15");
+        std::fs::create_dir_all(repo_root.join(".git")).expect("git dir");
+        std::fs::create_dir_all(&worktree_root).expect("worktree");
+        write_config(&repo_root);
+
+        let runtime = RuntimeLayout::from_repo_root(&repo_root);
+        runtime.ensure_exists().expect("runtime layout");
+        let repo = RepoContext {
+            repo_root: repo_root.clone(),
+            git_dir: repo_root.join(".git"),
+            github_owner: "dapi".into(),
+            github_repo: "ai-teamlead".into(),
+        };
+        let manifest = runtime
+            .create_claim_binding(
+                &repo,
+                "PVT_project",
+                &ZellijConfig {
+                    session_name: "teamlead".into(),
+                    tab_name: "issue-analysis".into(),
+                    tab_name_template: None,
+                    layout: None,
+                },
+                15,
+                FlowStage::Implementation,
+                "Waiting for Code Review",
+            )
+            .expect("claim binding");
+        runtime
+            .update_stage_workspace(
+                &manifest.session_uuid,
+                "implementation/issue-15",
+                &worktree_root,
+                "specs/issues/15",
+            )
+            .expect("workspace metadata");
+        runtime
+            .update_session_status(&manifest.session_uuid, "completed")
+            .expect("completed status");
+
+        let shell = FakeShell::default()
+            .with_response(
+                "gh pr list --head implementation/issue-15 --json number,url",
+                r#"[{"number":99,"url":"https://github.com/dapi/ai-teamlead/pull/99"}]"#,
+            )
+            .with_response(
+                "gh pr view 99 --json number,url,state,mergedAt,isDraft,headRefName,baseRefName",
+                r#"{"number":99,"url":"https://github.com/dapi/ai-teamlead/pull/99","state":"MERGED","mergedAt":"2026-03-14T20:00:00Z","isDraft":false,"headRefName":"implementation/issue-15","baseRefName":"main"}"#,
+            )
+            .with_response(
+                "gh api graphql -f query=",
+                r#"{"data":{"node":{"id":"PVT_project","title":"ai-teamlead","field":{"id":"status_field","options":[{"id":"opt_ready","name":"Ready for Implementation"},{"id":"opt_progress","name":"Implementation In Progress"},{"id":"opt_ci","name":"Waiting for CI"},{"id":"opt_review","name":"Waiting for Code Review"},{"id":"opt_done","name":"Done"},{"id":"opt_blocked","name":"Implementation Blocked"}]},"items":{"nodes":[{"id":"ITEM_15","fieldValueByName":{"name":"Waiting for Code Review","optionId":"opt_review"},"content":{"number":15,"state":"OPEN","repository":{"name":"ai-teamlead","owner":{"login":"dapi"}}}}]}}}}"#,
+            )
+            .with_response("gh issue close 15", "")
+            .with_response("git status --short", "")
+            .with_response(
+                &format!("git worktree remove {}", worktree_root.display()),
+                "",
+            )
+            .with_response("git branch -d implementation/issue-15", "");
+
+        let context = ExecutionContext {
+            stage: FlowStage::Implementation,
+            repo_root: repo_root.clone(),
+            worktree_root,
+            branch: "implementation/issue-15".into(),
+            artifacts_dir: "specs/issues/15".into(),
+            message: "implementation PR merged".into(),
+            outcome: StageOutcome::Merged,
+        };
+
+        execute_complete_stage(&shell, &manifest.session_uuid, context)
+            .expect("merged finalization");
+
+        let updated_issue = runtime
+            .load_issue_index(15)
+            .expect("index read")
+            .expect("index exists");
+        let updated_manifest = runtime
+            .load_session_manifest(&manifest.session_uuid)
+            .expect("manifest read")
+            .expect("manifest exists");
+
+        assert_eq!(updated_issue.last_known_flow_status, "Done");
+        assert_eq!(updated_manifest.status, "completed");
+
+        let calls = shell.calls();
+        assert!(
+            calls
+                .iter()
+                .any(|call| call == "gh pr list --head implementation/issue-15 --json number,url")
+        );
+        assert!(calls.iter().any(|call| call == "gh issue close 15"));
+        assert!(
+            calls
+                .iter()
+                .any(|call| call == "git branch -d implementation/issue-15")
+        );
+        assert!(
+            calls.iter().all(|call| !call.starts_with("git add ")),
+            "merged path must not stage artifacts"
+        );
+        assert!(
+            calls.iter().all(|call| !call.starts_with("git push ")),
+            "merged path must not push branch"
+        );
+        assert!(
+            calls.iter().all(|call| !call.starts_with("gh pr create ")),
+            "merged path must not create PR"
         );
     }
 
@@ -1006,6 +1302,7 @@ issue_implementation_flow:
     implementation_in_progress: "Implementation In Progress"
     waiting_for_ci: "Waiting for CI"
     waiting_for_code_review: "Waiting for Code Review"
+    done: "Done"
     implementation_blocked: "Implementation Blocked"
 
 runtime:

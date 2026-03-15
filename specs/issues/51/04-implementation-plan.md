@@ -1,8 +1,10 @@
 # Issue 51: План имплементации
 
-Статус: draft
-Последнее обновление: 2026-03-14
-Статус согласования: pending human review
+Статус: approved
+Последнее обновление: 2026-03-15
+Статус согласования: approved
+Approved By: dapi
+Approved At: 2026-03-14T23:05:41+03:00
 
 ## Назначение
 
@@ -16,7 +18,7 @@ implementation artifacts.
 
 - расширение `issue-implementation-flow` terminal path после merge;
 - новый terminal status `Done`;
-- runtime contract для tracked implementation PR;
+- GitHub-first reconcile contract для канонического implementation PR;
 - merged finalization path в `complete-stage`;
 - post-merge cleanup runtime/worktree/local branch;
 - unit, integration и headless-friendly verification coverage.
@@ -54,12 +56,12 @@ implementation artifacts.
 
 - текущий implementation flow уже умеет доводить issue до
   `Waiting for Code Review`;
-- runtime можно безопасно расширить tracked PR metadata без ломки analysis
-  binding;
+- GitHub-first reconcile можно добавить без разрушения analysis binding и
+  базового stage-aware runtime contract;
 - GitHub Project можно дополнить статусом `Done`;
 - post-merge cleanup должен работать без вмешательства в host `zellij`;
-- для legacy issues без tracked PR metadata понадобится отдельная
-  reconciliation инструкция или fallback path.
+- для legacy issues понадобится reconcile path, который не зависит от локальной
+  runtime PR metadata.
 
 ## Порядок работ
 
@@ -87,7 +89,7 @@ implementation artifacts.
 
 - документация не содержит противоречий по status model, cleanup и merge
   semantics;
-- по ADR можно восстановить причину появления `Done`, tracked PR metadata и
+- по ADR можно восстановить причину появления `Done`, GitHub-first reconcile и
   outcome `merged`.
 
 ### Этап 2. Расширить status model и stage guards
@@ -112,7 +114,7 @@ implementation artifacts.
 - unit-тесты на config parsing и status transitions;
 - regression tests на существующие implementation outcomes.
 
-### Этап 3. Добавить tracked PR metadata в runtime contract
+### Этап 3. Реализовать GitHub-first reconcile по canonical branch
 
 Цель:
 
@@ -125,15 +127,18 @@ implementation artifacts.
 
 Результат этапа:
 
-- runtime хранит минимум `pr_number`, `branch` и `worktree_root` для
-  implementation stage;
-- `ready-for-ci` path сохраняет эти данные при создании или reuse PR;
-- legacy-случаи без metadata получают явный fallback/manual reconcile path.
+- implementation PR определяется по canonical branch
+  `implementation/issue-N`;
+- `run` и post-merge path читают PR state через GitHub, а не через обязательную
+  runtime PR metadata;
+- runtime при необходимости хранит только execution/cache metadata;
+- неоднозначные legacy-случаи получают явный fallback/manual reconcile path.
 
 Проверка:
 
-- unit-тесты сериализации runtime schema;
-- integration-тесты на create/reuse PR с корректным сохранением metadata.
+- unit-тесты на observed-state derive rules;
+- integration-тесты на create/reuse PR и GitHub-first reconcile без runtime PR
+  metadata.
 
 ### Этап 4. Реализовать merged finalization и post-merge cleanup
 
@@ -177,7 +182,7 @@ implementation artifacts.
 
 - unit и integration coverage покрывают новый merged path;
 - есть операторская инструкция или migration note для legacy issues без
-  tracked PR metadata;
+  обязательной runtime PR metadata;
 - README и feature overview синхронизированы как summary.
 
 Проверка:
@@ -189,15 +194,17 @@ implementation artifacts.
 ## Критерий завершения
 
 - implementation lifecycle имеет документированный terminal state `Done`;
-- tracked PR metadata и `merged` finalization реализованы и покрыты тестами;
-- merge tracked PR закрывает issue и синхронизирует GitHub Project status;
+- GitHub-first reconcile и `merged` finalization реализованы и покрыты
+  тестами;
+- merge канонического implementation PR закрывает issue и синхронизирует
+  GitHub Project status;
 - cleanup implementation artifacts работает как idempotent best-effort path;
 - legacy и regression сценарии документированы и проверены.
 
 ## Открытые вопросы и риски
 
-- нужно определить точный fallback для уже существующих issues без tracked PR
-  metadata;
+- нужно определить точный fallback для уже существующих issues с неполным
+  runtime, но уже созданным implementation PR;
 - при некоторых repo policies закрытие issue сразу после merge может оказаться
   слишком ранним, если позже появится обязательный deploy gate;
 - cleanup local branch/worktree зависит от текущего `git worktree` состояния и
@@ -208,3 +215,19 @@ implementation artifacts.
 ### 2026-03-14
 
 - создан начальный план имплементации для issue 51
+
+## Follow-up acceptance 2026-03-15
+
+После принятия
+[ADR-0028](../../../docs/adr/0028-github-first-reconcile-and-runtime-cache-only.md)
+этот план нужно читать с одной корректировкой:
+
+- этап про добавление `tracked PR metadata` в runtime больше не является
+  целевым implementation step;
+- вместо него целевым шагом становится GitHub-first reconcile по canonical
+  branch, Project status и наблюдаемым git refs/worktree;
+- runtime schema может сохранять только optional cache/execution metadata и не
+  должна становиться обязательным источником semantic state issue.
+
+Остальные этапы, связанные с `Done`, `merged` finalization, issue close и
+best-effort cleanup, остаются актуальными.

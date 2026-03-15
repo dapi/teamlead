@@ -22,6 +22,7 @@
 #     implementation_in_progress: "Implementation In Progress"
 #     waiting_for_ci: "Waiting for CI"
 #     waiting_for_code_review: "Waiting for Code Review"
+#     done: "Done"
 #     implementation_blocked: "Implementation Blocked"
 #
 # runtime:

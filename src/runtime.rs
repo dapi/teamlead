@@ -63,6 +63,9 @@ impl RuntimeLayout {
             status: "active".to_string(),
             created_at: timestamp.clone(),
             updated_at: timestamp.clone(),
+            stage_branch: None,
+            stage_worktree_root: None,
+            stage_artifacts_dir: None,
             zellij: ZellijBinding {
                 session_name: zellij.session_name.clone(),
                 tab_name: zellij.tab_name.clone(),
@@ -146,10 +149,30 @@ impl RuntimeLayout {
         Ok(manifest)
     }
 
+    pub fn update_stage_workspace(
+        &self,
+        session_uuid: &str,
+        branch: &str,
+        worktree_root: &Path,
+        artifacts_dir: &str,
+    ) -> Result<SessionManifest> {
+        let mut manifest = self
+            .load_session_manifest(session_uuid)?
+            .ok_or_else(|| anyhow!("missing session manifest for session_uuid={session_uuid}"))?;
+        manifest.updated_at = Utc::now().to_rfc3339();
+        manifest.stage_branch = Some(branch.to_string());
+        manifest.stage_worktree_root = Some(worktree_root.to_path_buf());
+        manifest.stage_artifacts_dir = Some(artifacts_dir.to_string());
+
+        let session_path = self.sessions_dir.join(session_uuid).join("session.json");
+        write_json_pretty(session_path, &manifest)?;
+        Ok(manifest)
+    }
+
     pub fn update_issue_flow_status(&self, issue_number: u64, flow_status: &str) -> Result<()> {
-        let mut index = self
-            .load_issue_index(issue_number)?
-            .ok_or_else(|| anyhow!("missing issue session index for issue #{issue_number}"))?;
+        let Some(mut index) = self.load_issue_index(issue_number)? else {
+            return Ok(());
+        };
         index.last_known_flow_status = flow_status.to_string();
         index.updated_at = Utc::now().to_rfc3339();
         index.legacy_session_uuid = None;
@@ -189,6 +212,12 @@ pub struct SessionManifest {
     pub status: String,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage_worktree_root: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage_artifacts_dir: Option<String>,
     pub zellij: ZellijBinding,
 }
 
@@ -432,6 +461,64 @@ mod tests {
             .expect("reload")
             .expect("manifest exists");
         assert_eq!(reloaded.status, "completed");
+    }
+
+    #[test]
+    fn stores_workspace_metadata() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        let git_dir = repo_root.join(".git");
+        std::fs::create_dir_all(&git_dir).expect("git dir");
+
+        let layout = RuntimeLayout::from_repo_root(&repo_root);
+        layout.ensure_exists().expect("runtime layout");
+
+        let repo = RepoContext {
+            repo_root: repo_root.clone(),
+            git_dir,
+            github_owner: "dapi".into(),
+            github_repo: "teamlead".into(),
+        };
+        let zellij = ZellijConfig {
+            session_name: "ai-teamlead".into(),
+            tab_name: "issue-analysis".into(),
+            tab_name_template: None,
+            layout: None,
+        };
+
+        let manifest = layout
+            .create_claim_binding(
+                &repo,
+                "PVT_project",
+                &zellij,
+                42,
+                FlowStage::Implementation,
+                "Implementation In Progress",
+            )
+            .expect("claim binding");
+
+        let worktree_root = temp.path().join("worktrees/implementation/issue-42");
+        let updated = layout
+            .update_stage_workspace(
+                &manifest.session_uuid,
+                "implementation/issue-42",
+                &worktree_root,
+                "specs/issues/42",
+            )
+            .expect("workspace updated");
+
+        assert_eq!(
+            updated.stage_branch.as_deref(),
+            Some("implementation/issue-42")
+        );
+        assert_eq!(
+            updated.stage_worktree_root.as_deref(),
+            Some(worktree_root.as_path())
+        );
+        assert_eq!(
+            updated.stage_artifacts_dir.as_deref(),
+            Some("specs/issues/42")
+        );
     }
 
     #[test]

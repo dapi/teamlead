@@ -1,7 +1,7 @@
 # Feature 0001: Runtime-артефакты
 
 Статус: draft
-Последнее обновление: 2026-03-14
+Последнее обновление: 2026-03-15
 
 ## Назначение
 
@@ -86,8 +86,9 @@
 Важно не смешивать разные словари состояний:
 
 - `session.json.status` это локальный lifecycle session-binding
-- `issues/<issue_number>.json.last_known_flow_status` это последнее локально
-  известное значение flow-статуса из GitHub Project
+- `issues/<issue_number>.json.last_known_flow_status` при наличии это только
+  локальный cache / diagnostic snapshot последнего наблюдаемого flow-статуса
+  из GitHub Project
 - source of truth по status issue остается в GitHub Project, а не в runtime json
 
 ### `sessions/<session_uuid>/launch-layout.kdl`
@@ -123,10 +124,18 @@
 {
   "issue_number": 123,
   "session_uuid": "uuid",
-  "last_known_flow_status": "Waiting for Clarification",
   "updated_at": "2026-03-13T12:15:00Z"
 }
 ```
+
+Примечание:
+
+- `last_known_flow_status` при необходимости может существовать как optional
+  cache/diagnostic поле;
+- после принятия
+  [ADR-0028](../../adr/0028-github-first-reconcile-and-runtime-cache-only.md)
+  оно не входит в обязательный runtime contract и не используется как semantic
+  истина для reconcile.
 
 ## Инварианты
 
@@ -137,6 +146,8 @@
 - runtime-артефакты не являются source of truth по статусу issue в GitHub
 - runtime-артефакты являются source of truth для локального session-binding и
   технических метаданных запуска
+- semantic state issue должен восстанавливаться из GitHub даже при потере
+  локального runtime
 
 ## Правила обновления
 
@@ -156,6 +167,8 @@
 - при повторном `run` открывать новую pane в stable `zellij` launch context, а
   не пытаться вернуть пользователя в старую pane
 - не пытаться восстанавливать диалог из отдельных JSON-артефактов
+- не полагаться на `last_known_flow_status` как на единственный критерий выбора
+  следующего действия
 
 ## Диагностическая ценность
 
@@ -218,6 +231,18 @@
   сам `pane-entrypoint.sh`
 
 ### Практическая цепочка запуска
+
+## Follow-up acceptance 2026-03-15
+
+Принятый
+[ADR-0028](../../adr/0028-github-first-reconcile-and-runtime-cache-only.md)
+зафиксировал для runtime два ограничения:
+
+- runtime хранит session-binding, launcher и cache/execution metadata, но не
+  semantic state issue;
+- `tracked PR metadata` и `last_known_flow_status` не являются обязательной
+  частью runtime contract и не могут использоваться как канонический источник
+  истины.
 
 Для одной issue цепочка выглядит так:
 

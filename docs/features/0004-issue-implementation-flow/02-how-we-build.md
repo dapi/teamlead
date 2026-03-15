@@ -32,13 +32,15 @@
 - `Implementation In Progress`
 - `Waiting for CI`
 - `Waiting for Code Review`
+- `Done`
 - `Implementation Blocked`
 
 В runtime должны различаться:
 
 - `analysis` binding;
 - `implementation` binding;
-- branch/worktree и launcher context для каждого stage.
+- branch/worktree и launcher context для каждого stage;
+- optional cache/diagnostic metadata без semantic роли source of truth.
 
 ## Интерфейсы
 
@@ -55,7 +57,18 @@
 - runtime binding store;
 - implementation launcher;
 - finalization handler;
-- approval metadata reader для analysis artifacts.
+- approval metadata reader для analysis artifacts;
+- GitHub PR reader для merge detection и issue close.
+
+## Follow-up acceptance 2026-03-15
+
+Принятый
+[ADR-0028](../../adr/0028-github-first-reconcile-and-runtime-cache-only.md)
+зафиксировал:
+
+- source of truth по lifecycle остается в GitHub Project;
+- implementation PR определяется по canonical branch contract;
+- runtime хранит execution/cache metadata, но не semantic state issue.
 
 ## Технические решения
 
@@ -68,6 +81,7 @@
 - runtime binding обобщается до stage-aware модели;
 - `internal complete-stage` расширяется до stage-aware finalization с
   implementation outcomes;
+- post-merge path требует явного branch contract и GitHub-first reconcile;
 - issue может одновременно иметь history analysis stage и активный
   implementation binding без конфликта.
 
@@ -82,6 +96,7 @@ issue_implementation_flow:
     implementation_in_progress: "Implementation In Progress"
     waiting_for_ci: "Waiting for CI"
     waiting_for_code_review: "Waiting for Code Review"
+    done: "Done"
     implementation_blocked: "Implementation Blocked"
 
 launch_agent:
@@ -92,10 +107,12 @@ launch_agent:
 
 ## Ограничения реализации
 
-- первая версия не обязана закрывать merge и post-merge cleanup;
+- cleanup после merge остается best-effort и не должен откатывать `Done`;
 - CI gating может опираться на `gh pr checks`, а не на собственный GitHub API
   client;
 - для MVP допускается переиспользование части analysis launcher logic, но не
   через скрытый stage-agnostic god-script;
 - migration существующих runtime-файлов должна быть совместима с уже созданными
-  analysis session artifacts.
+  analysis session artifacts;
+- локальный runtime может отсутствовать или быть неполным без потери
+  восстановимости implementation state.

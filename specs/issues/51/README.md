@@ -1,11 +1,13 @@
 # Issue 51: определить post-merge lifecycle после merge implementation PR
 
-Статус: draft
+Статус: approved
 Тип задачи: `feature`
 Тип проекта: `infra/platform`
 Размер: `medium`
-Последнее обновление: 2026-03-14
-Статус согласования: pending human review
+Последнее обновление: 2026-03-15
+Статус согласования: approved
+Approved By: dapi
+Approved At: 2026-03-14T23:05:41+03:00
 
 ## Контекст
 
@@ -37,8 +39,8 @@ lifecycle без ввода лишнего третьего flow для MVP.
   агентской сессии;
 - issue переводится из `Waiting for Plan Review` в `Ready for Implementation`.
 
-В этот момент пакет должен поменять `Статус согласования` с
-`pending human review` на `approved` и зафиксировать:
+В этот момент пакет должен поменять `Статус согласования` на `approved` и
+зафиксировать:
 
 - `Approved By`
 - `Approved At`
@@ -85,7 +87,7 @@ lifecycle без ввода лишнего третьего flow для MVP.
 
 - post-merge lifecycle остается частью `issue-implementation-flow`, а не
   выделяется в отдельный третий flow для MVP;
-- merge tracked implementation PR становится явным trigger для terminal
+- merge канонического implementation PR становится явным trigger для terminal
   finalization;
 - после успешной post-merge finalization issue закрывается, а GitHub Project
   status переводится в `Done`;
@@ -95,3 +97,24 @@ lifecycle без ввода лишнего третьего flow для MVP.
   возможным follow-up, но не входят в текущий scope.
 
 Блокирующих вопросов по текущему issue не выявлено.
+
+## Follow-up acceptance 2026-03-15
+
+В implementation review был отдельно пересмотрен механизм восстановления истины
+о состоянии issue.
+
+По итогам принят
+[ADR-0028](../../../docs/adr/0028-github-first-reconcile-and-runtime-cache-only.md).
+
+Зафиксированное решение:
+
+- terminal status `Done` и сам post-merge lifecycle сохраняются;
+- source of truth по lifecycle остается в GitHub Project;
+- implementation PR должна определяться по canonical branch contract;
+- runtime переводится в роль cache/execution metadata;
+- `tracked PR metadata` и `last_known_flow_status` не считаются обязательной
+  semantic частью runtime contract.
+
+Это означает, что approved analysis package остается исторически валидным по
+целям и post-merge semantics, но его части про runtime-tracked PR identity и
+semantic runtime state частично superseded принятым ADR-0028.

@@ -102,7 +102,10 @@
 - install paths через `brew` и `curl` должны потреблять один и тот же
   опубликованный набор release assets;
 - changelog должен быть version-aware и пригодным как для репозитория, так и
-  для GitHub Release notes;
+  как структурированный вход для локальной генерации Release Notes;
+- success единого release entrypoint должен означать не просто успешный local
+  handoff в CI, а появление проверенного релиза в GitHub Releases с ожидаемыми
+  assets и checksums;
 - full user-facing onboarding остается отдельной задачей `#9`, поэтому в этой
   задаче достаточно release-oriented install contract и минимальной документации;
 - текущий проект уже использует GitHub Actions и GitHub Releases как допустимый
@@ -132,8 +135,9 @@ assets, changelog и Release Notes без ручной координации н
    изменений и получает предсказуемое обновление version/changelog/release
    metadata без ручной синхронизации нескольких мест.
 5. Сопровождающий запускает один release entrypoint, а дальше flow сам
-   выполняет локальную подготовку Release Notes, проверки, tag/push и CI
-   publish path.
+   выполняет локальную подготовку Release Notes, проверки, tag/push, дожидается
+   завершения release workflow и завершает работу только после появления
+   опубликованного релиза.
 6. Поддерживающий релиз проверяет changelog и release notes по конкретной
    версии без ручного сравнения между tag, binary assets и историей коммитов.
 

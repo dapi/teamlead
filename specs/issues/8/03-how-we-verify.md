@@ -15,6 +15,8 @@
 - Release Notes являются отдельным артефактом, не дублирующим `CHANGELOG.md`;
 - Release Notes генерируются локально до publish и затем попадают в GitHub
   Release из versioned файла репозитория;
+- release entrypoint завершается success только после успешного publish path в
+  GitHub Releases, а не после одного лишь push tag/commit;
 - install path через `brew` устанавливает опубликованную release-версию, а не
   development snapshot;
 - install path через `curl` устанавливает опубликованную release-версию для
@@ -45,6 +47,8 @@
 - правила versioning соответствуют Semantic Versioning 2.0.0;
 - один release запускается одним entrypoint, а не несколькими ручными
   операциями;
+- success entrypoint означает завершенный и проверенный publish, а не только
+  старт release workflow;
 - `brew` и `curl` используют один и тот же published asset contract;
 - changelog является обязательным release input, а не post-factum заметкой;
 - Release Notes хранятся отдельно от changelog и публикуются в GitHub Release
@@ -83,6 +87,8 @@
 - generated Homebrew formula ссылается на asset и checksum нужной версии;
 - release workflow читает Release Notes из versioned файла и публикует их в
   GitHub Release без повторной облачной генерации;
+- release entrypoint не завершает работу green status раньше, чем release
+  workflow закончит publish и GitHub Release станет наблюдаемым;
 - `curl` installer smoke path скачивает корректный asset для Linux/macOS test
   target и раскладывает бинарь в ожидаемое место;
 - повторный запуск release job для той же версии не приводит к silent
@@ -108,8 +114,10 @@
    Release Notes.
 7. CI собирает matrix бинарей, публикует checksums и создает GitHub Release.
 8. GitHub Release использует body из `docs/releases/vX.Y.Z.md`.
-9. Homebrew formula и `curl` installer начинают указывать на новые assets.
-10. Пользователь устанавливает новую версию через `brew` или `curl`.
+9. Entry point дожидается green publish и подтверждает наличие опубликованного
+   релиза.
+10. Homebrew formula и `curl` installer начинают указывать на новые assets.
+11. Пользователь устанавливает новую версию через `brew` или `curl`.
 
 ## Edge Cases
 
@@ -147,6 +155,7 @@
 - какой release matrix реально собран;
 - какие asset names и checksums опубликованы;
 - какой URL formula/tap и какой installer endpoint относятся к этой версии;
+- каким observed signal entrypoint подтвердил успешный publish;
 - на каком шаге release flow остановился: build, publish, tap update,
   installer validation или changelog gate.
 
@@ -158,6 +167,7 @@
 - version/tag/changelog contract проверяется автоматически;
 - Semantic Versioning 2.0.0 соблюдается и не подменен локальными правилами;
 - Release Notes не путаются с changelog, имеют guide и versioned storage;
+- semantics успеха entrypoint задокументирована и проверяема;
 - GitHub Release содержит ожидаемые assets и checksums;
 - `brew` path проверен на актуальную версию и checksum;
 - `curl` path проверен для поддерживаемых платформ;

@@ -100,9 +100,9 @@
   documented defaults, а не как обязательный активный YAML;
 - `zellij.session_name` документируется как template `${REPO}`;
 - `zellij.tab_name` документируется со значением `issue-analysis`;
-- optional `zellij.tab_name_template` показывается в шаблоне как
-  закомментированный opt-in пример `#${ISSUE_NUMBER}` и не включается в runtime
-  default-layer;
+- `zellij.tab_name_template` документируется как application default
+  `#${ISSUE_NUMBER}` для `tab`-режима и показывается в шаблоне как
+  закомментированный documented default;
 - `zellij.layout` документируется со значением `compact` как opt-in пример, а
   не как runtime default;
 - `./.ai-teamlead/zellij/analysis-tab.kdl` bootstrap-ится как versioned template
@@ -126,9 +126,9 @@ Runtime loading при этом строится как `defaults + active YAML 
 - отсутствующие defaulted-поля подставляются из canonical Rust default-layer;
 - `launch_agent.global_args.*` при отсутствии active override берутся из runtime
   defaults приложения;
-- `zellij.tab_name_template` остается допустимым `example-only extension`:
-  шаблон показывает, как включить issue-aware tab naming, но отсутствие active
-  override не меняет runtime path;
+- `zellij.tab_name_template` входит в canonical runtime default-layer:
+  отсутствие active override все равно дает issue-aware tab naming в
+  `tab`-режиме;
 - `zellij.layout` остается допустимым `example-only extension`: шаблон
   показывает, как включить custom layout, но отсутствие active override не
   меняет launcher path;

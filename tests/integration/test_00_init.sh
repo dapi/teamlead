@@ -118,10 +118,10 @@ else
 fi
 
 if grep -Fq '#   tab_name_template: "#${ISSUE_NUMBER}"' "$SETTINGS_FILE"; then
-    echo "  PASS: init keeps tab_name_template as opt-in example"
+    echo "  PASS: init documents tab_name_template as commented runtime default"
     ((PASS++)) || true
 else
-    echo "  FAIL: init keeps tab_name_template as opt-in example"
+    echo "  FAIL: init documents tab_name_template as commented runtime default"
     ((FAIL++)) || true
 fi
 

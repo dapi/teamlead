@@ -5,6 +5,8 @@ use anyhow::{Context, Result};
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
+pub const DEFAULT_ZELLIJ_TAB_NAME_TEMPLATE: &str = "#${ISSUE_NUMBER}";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Config {
     pub github: GithubConfig,
@@ -301,7 +303,7 @@ pub struct ZellijConfig {
     pub tab_name: String,
     #[serde(default = "default_zellij_launch_target")]
     pub launch_target: LaunchTarget,
-    #[serde(default)]
+    #[serde(default = "default_zellij_tab_name_template")]
     pub tab_name_template: Option<String>,
     #[serde(default = "default_zellij_layout")]
     pub layout: Option<String>,
@@ -313,7 +315,7 @@ impl Default for ZellijConfig {
             session_name: default_zellij_session_name(),
             tab_name: default_zellij_tab_name(),
             launch_target: default_zellij_launch_target(),
-            tab_name_template: None,
+            tab_name_template: default_zellij_tab_name_template(),
             layout: default_zellij_layout(),
         }
     }
@@ -426,6 +428,10 @@ fn default_zellij_session_name() -> String {
 
 fn default_zellij_tab_name() -> String {
     "issue-analysis".into()
+}
+
+fn default_zellij_tab_name_template() -> Option<String> {
+    Some(DEFAULT_ZELLIJ_TAB_NAME_TEMPLATE.into())
 }
 
 fn default_zellij_launch_target() -> LaunchTarget {
@@ -618,8 +624,8 @@ mod tests {
         },
         FieldContract {
             key: "zellij.tab_name_template",
-            kind: FieldKind::ExampleOnlyExtension,
-            runtime_default: None,
+            kind: FieldKind::DefaultedByApplication,
+            runtime_default: Some(DEFAULT_ZELLIJ_TAB_NAME_TEMPLATE),
             template_line: "#   tab_name_template: \"#${ISSUE_NUMBER}\"",
         },
         FieldContract {
@@ -922,7 +928,10 @@ github:
         assert_eq!(config.zellij.session_name, "${REPO}");
         assert_eq!(config.zellij.tab_name, "issue-analysis");
         assert_eq!(config.zellij.launch_target, LaunchTarget::Tab);
-        assert_eq!(config.zellij.tab_name_template, None);
+        assert_eq!(
+            config.zellij.tab_name_template.as_deref(),
+            Some(DEFAULT_ZELLIJ_TAB_NAME_TEMPLATE)
+        );
         assert_eq!(config.zellij.layout, None);
         assert_eq!(
             config.launch_agent.analysis_branch_template,
@@ -973,7 +982,10 @@ zellij:
         assert_eq!(config.zellij.session_name, "custom-session");
         assert_eq!(config.zellij.tab_name, "issue-analysis");
         assert_eq!(config.zellij.launch_target, LaunchTarget::Tab);
-        assert_eq!(config.zellij.tab_name_template, None);
+        assert_eq!(
+            config.zellij.tab_name_template.as_deref(),
+            Some(DEFAULT_ZELLIJ_TAB_NAME_TEMPLATE)
+        );
         assert_eq!(config.zellij.layout, None);
         assert_eq!(
             config.launch_agent.global_args.codex,
@@ -1011,7 +1023,10 @@ zellij:
         let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
         let config: Config = serde_yaml::from_str(&yaml).expect("yaml should parse");
         config.validate(&path).expect("config should validate");
-        assert_eq!(config.zellij.tab_name_template, None);
+        assert_eq!(
+            config.zellij.tab_name_template.as_deref(),
+            Some(DEFAULT_ZELLIJ_TAB_NAME_TEMPLATE)
+        );
     }
 
     #[test]

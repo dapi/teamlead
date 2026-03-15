@@ -14,7 +14,7 @@ use crate::cli::{Cli, Command, InternalCommand, TestAgentFlowArgs, TestCommand};
 use crate::complete_stage::{
     canonical_pr_is_merged, finalize_merged_implementation, run_complete_stage,
 };
-use crate::config::{Config, LaunchTarget};
+use crate::config::{Config, DEFAULT_ZELLIJ_TAB_NAME_TEMPLATE, LaunchTarget};
 use crate::domain::{
     FlowStage, allowed_run_statuses, decide_run_stage, format_closed_issue_message,
     format_missing_issue_message, format_project_attachment_failure_message,
@@ -1020,7 +1020,10 @@ fn resolve_launch_zellij_config(
         LaunchTarget::Pane => zellij.tab_name.clone(),
         LaunchTarget::Tab => render_zellij_tab_name(
             &zellij.tab_name,
-            zellij.tab_name_template.as_deref(),
+            zellij
+                .tab_name_template
+                .as_deref()
+                .or(Some(DEFAULT_ZELLIJ_TAB_NAME_TEMPLATE)),
             issue_number,
         )?,
     };
@@ -1169,17 +1172,17 @@ mod tests {
     }
 
     #[test]
-    fn keeps_stable_tab_name_without_template() {
+    fn tab_launch_target_uses_default_issue_aware_name_without_explicit_template() {
         let zellij = ZellijConfig {
             session_name: "example".into(),
             tab_name: "issue-analysis".into(),
-            launch_target: LaunchTarget::Pane,
+            launch_target: LaunchTarget::Tab,
             tab_name_template: None,
             layout: None,
         };
 
         let resolved = resolve_launch_zellij_config(&zellij, 42, None).expect("resolved config");
-        assert_eq!(resolved.tab_name, "issue-analysis");
+        assert_eq!(resolved.tab_name, "#42");
     }
 
     #[test]

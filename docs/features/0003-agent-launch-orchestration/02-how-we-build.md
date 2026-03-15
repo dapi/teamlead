@@ -52,8 +52,8 @@ Orchestration flow делится на две части:
 - `zellij.session_name`
 - `zellij.tab_name`
 - `zellij.launch_target` со значениями `pane | tab`
-- optional `zellij.tab_name_template` для issue-aware имени tab на tab-launch
-  path
+- `zellij.tab_name_template` как naming source для issue-aware имени tab на
+  tab-launch path
 - `zellij.layout` как optional layout name для branch создания новой session
 
 Bootstrap default:
@@ -61,6 +61,7 @@ Bootstrap default:
 - `session_name = ${REPO}`
 - `tab_name = issue-analysis`
 - `launch_target = tab`
+- `tab_name_template = #${ISSUE_NUMBER}`
 
 Runtime правила:
 
@@ -83,10 +84,10 @@ Runtime правила:
   - при нескольких совпадениях завершает запуск явной ошибкой
 - если launch target = `tab`:
   - `ai-teamlead` создает отдельный analysis tab через versioned layout
-  - если `zellij.tab_name_template` задан, runtime рендерит effective tab name
-    из `${ISSUE_NUMBER}` до генерации `launch-layout.kdl`
-  - если `zellij.tab_name_template` не задан, runtime использует stable
-    `zellij.tab_name`
+  - runtime по умолчанию рендерит effective tab name из `${ISSUE_NUMBER}` до
+    генерации `launch-layout.kdl`
+  - если `zellij.tab_name_template` явно задан, runtime использует override из
+    конфига
 - analysis tab не должна выглядеть как bare technical tab, если project-local
   contract ожидает bar/plugins и другой tab-level UX
 - для каждого запуска issue-analysis открывается новая pane
@@ -228,7 +229,7 @@ zellij:
   session_name: "${REPO}"
   tab_name: "issue-analysis"
   launch_target: "tab"
-  # tab_name_template: "#${ISSUE_NUMBER}"
+  tab_name_template: "#${ISSUE_NUMBER}"
   # layout: "my-custom-layout"
 
 launch_agent:
@@ -248,8 +249,9 @@ launch_agent:
 
 Во время запуска `session_name` рендерится тем же template path, что и
 `launch_agent.*`, но для него разрешен только `${REPO}`.
-Во время tab-launch path `tab_name_template`, если он задан, поддерживает
-только `${ISSUE_NUMBER}` и не меняет semantics stable `zellij.tab_name`.
+Во время tab-launch path `tab_name_template` по умолчанию равно
+`#${ISSUE_NUMBER}`, поддерживает только `${ISSUE_NUMBER}` и не меняет
+semantics stable `zellij.tab_name`.
 В `pane`-ветке `tab_name_template` игнорируется, потому что shared tab должен
 оставаться стабильным semantic context.
 

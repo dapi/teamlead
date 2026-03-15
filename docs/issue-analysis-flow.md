@@ -187,7 +187,8 @@ Poller или ручной запуск выбирает одну подходя
 - `poll` и `loop` не имеют отдельного public `--launch-target` override и
   используют только config/default path
 - `zellij.tab_name` задает stable shared tab для `pane`-режима
-- optional `zellij.tab_name_template` влияет только на `tab`-режим
+- defaulted `zellij.tab_name_template = #${ISSUE_NUMBER}` влияет только на
+  `tab`-режим
 - orchestration-слой создает или находит нужные session/tab по effective target
   session и launch target:
   - `pane` переиспользует shared tab или создает его, если он отсутствует

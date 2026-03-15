@@ -2,6 +2,7 @@
 
 Статус: accepted
 Дата: 2026-03-14
+Superseded in part by: [ADR-0034](./0034-default-issue-aware-tab-name-for-tab-launch.md)
 
 ## Контекст
 
@@ -34,15 +35,18 @@ zellij:
   для tab-launch path;
 - `tab_name_template` поддерживает только `${ISSUE_NUMBER}`;
 - literal строка без placeholders тоже допустима;
-- если `tab_name_template` отсутствует, runtime использует `zellij.tab_name`;
+- в исходной редакции ADR, до [ADR-0034](./0034-default-issue-aware-tab-name-for-tab-launch.md),
+  если `tab_name_template` отсутствовал, runtime использовал `zellij.tab_name`;
 - effective tab name вычисляется до генерации `launch-layout.kdl`;
 - runtime manifest, launch log и operator-facing diagnostics используют уже
   resolved tab name, а не raw config template.
 
-Bootstrap:
+Bootstrap в исходной редакции ADR:
 
 - `templates/init/settings.yml` и repo-local `settings.yml` показывают
-  commented example `#${ISSUE_NUMBER}`, но не включают поле по умолчанию.
+  commented example `#${ISSUE_NUMBER}`, но не включают поле по умолчанию;
+- это bootstrap-правило частично superseded
+  [ADR-0034](./0034-default-issue-aware-tab-name-for-tab-launch.md).
 
 ## Последствия
 

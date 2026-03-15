@@ -20,7 +20,6 @@ run_override_scenario() {
 EOF
 
     sed -i "s/^  launch_target: \".*\"$/  launch_target: \"$settings_target\"/" "$settings_file"
-    sed -i '/^  tab_name: "issue-analysis"$/a\  tab_name_template: "#${ISSUE_NUMBER}"' "$settings_file"
 
     install_gh_stub "$stub_bin" "$gh_snapshot" "$gh_log"
     install_agent_stubs "$stub_bin" "$stub_out"

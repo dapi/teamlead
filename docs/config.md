@@ -126,11 +126,13 @@ Bootstrap overview:
   - при duplicate tabs завершает запуск ошибкой
 - `tab`:
   - создает отдельный analysis tab
-  - если задан `zellij.tab_name_template`, effective имя tab рендерится из него
+  - effective имя tab по умолчанию рендерится из `#${ISSUE_NUMBER}`
+  - если задан `zellij.tab_name_template`, используется явный override из
+    конфига
 
 `zellij.tab_name_template`:
 
-- optional поле
+- поле с application default `#${ISSUE_NUMBER}`
 - влияет только на `tab`-режим
 - поддерживает только `${ISSUE_NUMBER}`
 - не меняет semantics stable `zellij.tab_name`
@@ -150,6 +152,7 @@ Bootstrap overview:
 - `zellij.session_name`
 - `zellij.tab_name`
 - `zellij.launch_target`
+- `zellij.tab_name_template`
 - `launch_agent.analysis_branch_template`
 - `launch_agent.worktree_root_template`
 - `launch_agent.analysis_artifacts_dir_template`
@@ -159,7 +162,6 @@ Bootstrap overview:
 
 ## Example-only extension поля
 
-- `zellij.tab_name_template`
 - `zellij.layout`
 
 Эти поля показываются в bootstrap template как opt-in examples и не обязаны

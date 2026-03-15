@@ -97,3 +97,27 @@ lifecycle без ввода лишнего третьего flow для MVP.
   возможным follow-up, но не входят в текущий scope.
 
 Блокирующих вопросов по текущему issue не выявлено.
+
+## Follow-up review 2026-03-15
+
+В implementation review выяснилось, что часть принятого решения требует
+повторного архитектурного пересмотра.
+
+Под пересмотр вынесен не terminal status `Done` и не сам post-merge lifecycle,
+а способ восстановления истины о состоянии issue:
+
+- хранение `tracked PR metadata` в runtime;
+- хранение `last_known_flow_status` как semantic state;
+- зависимость post-merge reconcile от локального runtime как обязательного
+  источника данных.
+
+На review вынесен proposed ADR:
+
+- [../../../docs/adr/0028-github-first-reconcile-and-runtime-cache-only.md](../../../docs/adr/0028-github-first-reconcile-and-runtime-cache-only.md)
+
+Цель follow-up review:
+
+- подтвердить, что source of truth остается на GitHub;
+- перевести runtime в роль cache/execution metadata;
+- определить, нужно ли supersede-ить соответствующие части ADR-0025/0026/0027
+  до следующего кодового шага.

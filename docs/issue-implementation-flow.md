@@ -32,7 +32,8 @@
 
 - issue переведена в `Waiting for CI`;
 - или issue переведена в `Waiting for Code Review`;
-- или issue переведена в `Done` и закрыта после merge tracked PR;
+- или issue переведена в `Done` и закрыта после merge канонического
+  implementation PR;
 - или issue возвращена в `Implementation In Progress`;
 - или issue переведена в `Implementation Blocked`.
 
@@ -82,6 +83,11 @@ Repo-local runtime state допускается только для:
 
 Runtime state не должен подменять project status и не должен использоваться для
 обхода допустимых переходов.
+
+Дополнительное правило:
+
+- `tracked_pr_*` и `last_known_flow_status` не считаются каноническим источником
+  истины и могут использоваться только как cache/diagnostic metadata.
 
 ## Связь с `run`
 
@@ -169,8 +175,8 @@ Issue может быть запущена через implementation flow тол
   `Waiting for Code Review`,
   `Implementation Blocked`;
 - approved analysis artifacts доступны и валидны;
-- для re-entry статусов существует stage-specific runtime-binding или
-  документированный способ его восстановить.
+- для re-entry статусов runtime-binding может отсутствовать, если execution
+  context может быть восстановлен из GitHub и наблюдаемого git state.
 
 ## Шаги flow
 
@@ -198,25 +204,36 @@ Issue может быть запущена через implementation flow тол
 `Implementation Blocked`:
 
 - повторный `run` допускается только как явное operator-intent действие;
-- issue с merged tracked PR при статусе `Waiting for Code Review`
+- `run` сначала делает reconcile по GitHub Project status, implementation PR,
+  branch refs и worktree, а уже потом выбирает дальнейшее действие;
+- issue с merged implementation PR при статусе `Waiting for Code Review`
   терминализируется в `Done` без нового coding launch;
 - в остальных случаях issue переводится обратно в `Implementation In Progress`;
-- stage-specific binding и implementation branch lifecycle переиспользуются.
+- stage-specific binding и implementation branch lifecycle переиспользуются,
+  если они доступны; иначе execution context восстанавливается заново.
 
-## Tracked implementation PR
+## Каноническая implementation branch и observed state
 
-Post-merge path опирается не на эвристику по любому merge commit, а на явно
-сохраненный tracked PR.
+Post-merge path опирается не на произвольный merge commit и не на обязательную
+runtime metadata, а на канонический branch contract.
 
-Минимальный runtime-контракт:
+Минимальный contract:
 
-- implementation session хранит `tracked_pr_number`;
-- рядом сохраняются `stage_branch`, `stage_worktree_root` и
-  `stage_artifacts_dir`;
-- `ready-for-ci` и `ready-for-review` path обязаны зафиксировать identity
-  draft/review PR в runtime;
-- если tracked PR metadata отсутствует, issue не может быть автоматически
-  закрыта post-merge path и требует явного ручного reconcile.
+- для implementation issue `N` каноническая branch называется
+  `implementation/issue-N`;
+- implementation PR определяется по `headRefName == implementation/issue-N`;
+- `run <issue>` и post-merge reconciliation читают PR state именно через этот
+  branch contract;
+- если найдено больше одного PR для канонической branch, flow считается
+  неоднозначным и требует явной диагностики.
+
+Observed state для implementation re-entry выводится из:
+
+- project status в GitHub Project;
+- PR по canonical implementation branch;
+- remote branch presence;
+- local branch presence;
+- local worktree presence.
 
 ### 3. Реализация
 
@@ -246,15 +263,13 @@ Implementation stage завершается через stage-aware internal CLI-
 - `ready-for-ci`:
   - коммитит и пушит implementation branch;
   - создает или переиспользует draft PR;
-  - сохраняет tracked PR metadata в runtime;
   - переводит issue в `Waiting for CI`.
 - `ready-for-review`:
   - подтверждает, что обязательные CI checks зеленые;
   - при необходимости переводит PR в ready-for-review;
-  - сохраняет или переиспользует tracked PR metadata;
   - переводит issue в `Waiting for Code Review`.
 - `merged`:
-  - подтверждает, что именно tracked implementation PR merged в default branch;
+  - подтверждает, что канонический implementation PR merged в default branch;
   - переводит issue в `Done`;
   - закрывает GitHub issue;
   - помечает implementation session как completed;
@@ -278,7 +293,8 @@ Human gate обязателен минимум в двух местах:
 
 - зеленый CI не заменяет human review;
 - review feedback может вернуть issue в `Implementation In Progress`;
-- merge tracked PR завершает implementation lifecycle в пределах этого flow;
+- merge канонического implementation PR завершает implementation lifecycle в
+  пределах этого flow;
 - release и deploy после merge остаются отдельным будущим flow.
 
 ## Протокол оператора
@@ -296,7 +312,7 @@ Human gate обязателен минимум в двух местах:
    `Implementation Blocked`.
 4. Принять реализацию к review.
    Результат: issue оказывается в `Waiting for Code Review`.
-5. Завершить lifecycle после merge tracked PR.
+5. Завершить lifecycle после merge implementation PR.
    Результат: `run <issue>` или `complete-stage --outcome merged` переводит
    issue в `Done`, закрывает ее и выполняет cleanup.
 
@@ -331,6 +347,7 @@ launch_agent:
 - [adr/0025-stage-aware-runtime-bindings.md](./adr/0025-stage-aware-runtime-bindings.md)
 - [adr/0026-stage-aware-complete-stage.md](./adr/0026-stage-aware-complete-stage.md)
 - [adr/0027-post-merge-implementation-lifecycle.md](./adr/0027-post-merge-implementation-lifecycle.md)
+- [adr/0028-github-first-reconcile-and-runtime-cache-only.md](./adr/0028-github-first-reconcile-and-runtime-cache-only.md)
 
 ## Журнал изменений
 
@@ -341,3 +358,11 @@ launch_agent:
 - добавлена status model для implementation lifecycle
 - добавлен stage-aware finalization contract для implementation outcomes
 - добавлен terminal post-merge path с `Done`, tracked PR metadata и cleanup
+
+### 2026-03-15
+
+- SSOT уточнен в сторону GitHub-first reconcile
+- `tracked PR metadata` и `last_known_flow_status` переведены в роль
+  cache/diagnostic metadata, а не semantic source of truth
+- добавлен [ADR-0028](./adr/0028-github-first-reconcile-and-runtime-cache-only.md)
+  как proposed replacement для соответствующих частей ADR-0025/0026/0027

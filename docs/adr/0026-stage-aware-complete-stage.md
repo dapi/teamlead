@@ -1,6 +1,6 @@
 # ADR-0026: stage-aware `internal complete-stage`
 
-Статус: accepted
+Статус: на пересмотре, см. ADR-0028
 Дата: 2026-03-14
 
 ## Контекст
@@ -61,6 +61,8 @@ Implementation outcomes:
 - CLI parsing и service layer становятся сложнее;
 - нужно продумать backward compatibility для analysis prompts;
 - реализация должна различать stage-specific outcome vocabulary.
+- часть implementation-specific reconciliation logic не должна зависеть от
+  runtime как от источника истины.
 
 ## Альтернативы
 
@@ -89,3 +91,10 @@ Implementation outcomes:
 
 - `complete-stage` расширен до stage-aware контракта для implementation flow
 - добавлен implementation outcome `merged` для terminal post-merge finalization
+
+### 2026-03-15
+
+- статус ADR переведен в `на пересмотре`
+- уточняется граница ответственности между `complete-stage` и GitHub-first
+  reconcile, описанная в
+  [ADR-0028](./0028-github-first-reconcile-and-runtime-cache-only.md)

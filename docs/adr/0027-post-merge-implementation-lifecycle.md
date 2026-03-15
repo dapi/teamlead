@@ -1,6 +1,6 @@
 # ADR-0027: post-merge lifecycle остается частью `issue-implementation-flow`
 
-Статус: accepted
+Статус: на пересмотре, см. ADR-0028
 Дата: 2026-03-14
 
 ## Контекст
@@ -10,7 +10,7 @@
 
 Это оставляло незафиксированными несколько ключевых вопросов:
 
-- какой статус завершает issue после merge tracked implementation PR;
+- какой статус завершает issue после merge implementation PR;
 - должен ли post-merge path быть отдельным flow или terminal веткой текущего
   implementation lifecycle;
 - как связать merge PR, закрытие issue и GitHub Project status;
@@ -26,8 +26,8 @@
 - terminal project status после merge tracked implementation PR называется
   `Done`;
 - `run <issue>` при статусе `Waiting for Code Review` может выполнить
-  post-merge reconciliation без нового coding launch, если tracked PR уже
-  merged;
+  post-merge reconciliation без нового coding launch, если implementation PR
+  уже merged;
 - `internal complete-stage --stage implementation --outcome merged`
   используется как канонический terminal finalization path;
 - merged finalization переводит project item в `Done`, закрывает GitHub issue и
@@ -46,10 +46,10 @@
 
 Минусы:
 
-- runtime contract становится богаче и должен хранить tracked PR metadata;
+- первая версия решения делала runtime богаче и пыталась хранить tracked PR
+  metadata;
 - `run` и `complete-stage` получают дополнительную branch post-merge логики;
-- для legacy issues без tracked PR metadata нужен отдельный ручной reconcile
-  path.
+- для legacy issues нужен явный GitHub-first reconcile path.
 
 ## Альтернативы
 
@@ -65,7 +65,7 @@
 Отклонено.
 
 Это создает риск закрытия issue по неверному PR и противоречит требованию
-явного tracked PR identity.
+явной канонической идентификации implementation PR.
 
 ## Связанные документы
 
@@ -79,3 +79,9 @@
 ### 2026-03-14
 
 - принят минимальный post-merge lifecycle в составе `issue-implementation-flow`
+
+### 2026-03-15
+
+- статус ADR переведен в `на пересмотре`
+- механизм `tracked PR metadata in runtime` вынесен на повторный пересмотр в
+  [ADR-0028](./0028-github-first-reconcile-and-runtime-cache-only.md)

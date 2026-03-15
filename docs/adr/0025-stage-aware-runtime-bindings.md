@@ -1,6 +1,6 @@
 # ADR-0025: stage-aware runtime bindings для issue session
 
-Статус: accepted
+Статус: на пересмотре, см. ADR-0028
 Дата: 2026-03-14
 
 ## Контекст
@@ -16,8 +16,8 @@
 - analysis binding нельзя терять после перехода к coding stage;
 - implementation stage нужен собственный reusable binding;
 - `run` должен понимать, какой binding искать при re-entry.
-- post-merge reconciliation требует хранить identity tracked PR и workspace
-  metadata после `ready-for-ci` / `ready-for-review`.
+- первая версия post-merge reconciliation была спроектирована вокруг хранения
+  identity tracked PR и `last_known_flow_status` в runtime.
 
 ## Решение
 
@@ -31,8 +31,7 @@ Runtime model становится stage-aware.
   binding;
 - analysis и implementation binding не перезаписывают друг друга;
 - implementation session дополнительно может хранить `stage_branch`,
-  `stage_worktree_root`, `stage_artifacts_dir`, `tracked_pr_number` и
-  `tracked_pr_url`.
+  `stage_worktree_root` и `stage_artifacts_dir`.
 
 Минимальная форма issue index:
 
@@ -43,7 +42,6 @@ Runtime model становится stage-aware.
     "analysis": "session-uuid-1",
     "implementation": "session-uuid-2"
   },
-  "last_known_flow_status": "Implementation In Progress",
   "updated_at": "2026-03-14T12:00:00Z"
 }
 ```
@@ -91,5 +89,12 @@ Runtime model становится stage-aware.
 ### 2026-03-14
 
 - runtime binding обобщен до stage-aware модели
-- runtime schema расширена tracked PR metadata и workspace coordinates для
-  post-merge lifecycle
+- решение о tracked PR metadata и `last_known_flow_status` вынесено на
+  повторный пересмотр
+
+### 2026-03-15
+
+- статус ADR переведен в `на пересмотре`
+- хранение `tracked_pr_number`, `tracked_pr_url` и использование
+  `last_known_flow_status` как semantic state вынесено на пересмотр в
+  [ADR-0028](./0028-github-first-reconcile-and-runtime-cache-only.md)

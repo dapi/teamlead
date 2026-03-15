@@ -64,6 +64,13 @@ impl Config {
             "zellij.tab_name must not be empty in {}",
             path.display()
         );
+        if let Some(tab_name_template) = &self.zellij.tab_name_template {
+            anyhow::ensure!(
+                !tab_name_template.trim().is_empty(),
+                "zellij.tab_name_template must not be empty in {}",
+                path.display()
+            );
+        }
         if let Some(layout) = &self.zellij.layout {
             anyhow::ensure!(
                 !layout.trim().is_empty(),
@@ -90,6 +97,8 @@ impl Config {
             "launch_agent.analysis_artifacts_dir_template must not be empty in {}",
             path.display()
         );
+        validate_global_args(path, "claude", &self.launch_agent.global_args.claude)?;
+        validate_global_args(path, "codex", &self.launch_agent.global_args.codex)?;
         anyhow::ensure!(
             !self
                 .launch_agent
@@ -264,6 +273,8 @@ pub struct ZellijConfig {
     pub session_name: String,
     #[serde(default = "default_zellij_tab_name")]
     pub tab_name: String,
+    #[serde(default)]
+    pub tab_name_template: Option<String>,
     #[serde(default = "default_zellij_layout")]
     pub layout: Option<String>,
 }
@@ -273,6 +284,7 @@ impl Default for ZellijConfig {
         Self {
             session_name: default_zellij_session_name(),
             tab_name: default_zellij_tab_name(),
+            tab_name_template: None,
             layout: default_zellij_layout(),
         }
     }
@@ -286,6 +298,8 @@ pub struct LaunchAgentConfig {
     pub worktree_root_template: String,
     #[serde(default = "default_analysis_artifacts_dir_template")]
     pub analysis_artifacts_dir_template: String,
+    #[serde(default)]
+    pub global_args: LaunchAgentGlobalArgsConfig,
     #[serde(default = "default_implementation_branch_template")]
     pub implementation_branch_template: String,
     #[serde(default = "default_implementation_worktree_root_template")]
@@ -300,9 +314,27 @@ impl Default for LaunchAgentConfig {
             analysis_branch_template: default_analysis_branch_template(),
             worktree_root_template: default_worktree_root_template(),
             analysis_artifacts_dir_template: default_analysis_artifacts_dir_template(),
+            global_args: LaunchAgentGlobalArgsConfig::default(),
             implementation_branch_template: default_implementation_branch_template(),
             implementation_worktree_root_template: default_implementation_worktree_root_template(),
             implementation_artifacts_dir_template: default_implementation_artifacts_dir_template(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LaunchAgentGlobalArgsConfig {
+    #[serde(default = "default_claude_global_args")]
+    pub claude: Vec<String>,
+    #[serde(default = "default_codex_global_args")]
+    pub codex: Vec<String>,
+}
+
+impl Default for LaunchAgentGlobalArgsConfig {
+    fn default() -> Self {
+        Self {
+            claude: default_claude_global_args(),
+            codex: default_codex_global_args(),
         }
     }
 }
@@ -383,6 +415,14 @@ fn default_analysis_artifacts_dir_template() -> String {
     "specs/issues/${ISSUE_NUMBER}".into()
 }
 
+fn default_claude_global_args() -> Vec<String> {
+    vec!["--permission-mode".into(), "auto".into()]
+}
+
+fn default_codex_global_args() -> Vec<String> {
+    vec!["--full-auto".into()]
+}
+
 fn default_implementation_branch_template() -> String {
     "implementation/issue-${ISSUE_NUMBER}".into()
 }
@@ -393,6 +433,17 @@ fn default_implementation_worktree_root_template() -> String {
 
 fn default_implementation_artifacts_dir_template() -> String {
     "specs/issues/${ISSUE_NUMBER}".into()
+}
+
+fn validate_global_args(path: &Path, agent_name: &str, args: &[String]) -> Result<()> {
+    for (index, arg) in args.iter().enumerate() {
+        anyhow::ensure!(
+            !arg.trim().is_empty(),
+            "launch_agent.global_args.{agent_name}[{index}] must not be blank in {}",
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -418,7 +469,7 @@ mod tests {
     }
 
     const SETTINGS_TEMPLATE: &str = include_str!("../templates/init/settings.yml");
-    const FIELD_CONTRACTS: [FieldContract; 23] = [
+    const FIELD_CONTRACTS: [FieldContract; 27] = [
         FieldContract {
             key: "github.project_id",
             kind: FieldKind::RequiredWithoutDefault,
@@ -516,6 +567,12 @@ mod tests {
             template_line: "#   tab_name: \"issue-analysis\"",
         },
         FieldContract {
+            key: "zellij.tab_name_template",
+            kind: FieldKind::ExampleOnlyExtension,
+            runtime_default: None,
+            template_line: "#   tab_name_template: \"#${ISSUE_NUMBER}\"",
+        },
+        FieldContract {
             key: "zellij.layout",
             kind: FieldKind::ExampleOnlyExtension,
             runtime_default: None,
@@ -540,6 +597,24 @@ mod tests {
             template_line: "#   analysis_artifacts_dir_template: \"specs/issues/${ISSUE_NUMBER}\"",
         },
         FieldContract {
+            key: "launch_agent.global_args.claude[0]",
+            kind: FieldKind::DefaultedByApplication,
+            runtime_default: Some("--permission-mode"),
+            template_line: "#       - \"--permission-mode\"",
+        },
+        FieldContract {
+            key: "launch_agent.global_args.claude[1]",
+            kind: FieldKind::DefaultedByApplication,
+            runtime_default: Some("auto"),
+            template_line: "#       - \"auto\"",
+        },
+        FieldContract {
+            key: "launch_agent.global_args.codex[0]",
+            kind: FieldKind::DefaultedByApplication,
+            runtime_default: Some("--full-auto"),
+            template_line: "#       - \"--full-auto\"",
+        },
+        FieldContract {
             key: "launch_agent.implementation_branch_template",
             kind: FieldKind::DefaultedByApplication,
             runtime_default: Some("implementation/issue-${ISSUE_NUMBER}"),
@@ -560,7 +635,7 @@ mod tests {
     ];
 
     fn sample_config() -> &'static str {
-        r#"
+        r##"
 github:
   project_id: "PVT_kwHNeaPOAUaljg"
 
@@ -588,16 +663,23 @@ runtime:
 zellij:
   session_name: "ai-teamlead"
   tab_name: "issue-analysis"
+  tab_name_template: "#${ISSUE_NUMBER}"
   layout: "custom-layout"
 
 launch_agent:
   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
   worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+  global_args:
+    claude:
+      - "--permission-mode"
+      - "auto"
+    codex:
+      - "--full-auto"
   implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
   implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
   implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
-"#
+"##
     }
 
     fn runtime_defaults_with_project(project_id: &str) -> Config {
@@ -643,7 +725,15 @@ launch_agent:
                         out.insert(prefix, value.to_string());
                     }
                 }
-                Value::Null | Value::Sequence(_) | Value::Tagged(_) => {}
+                Value::Sequence(sequence) => {
+                    for (index, value) in sequence.iter().enumerate() {
+                        let Some(prefix) = &prefix else {
+                            continue;
+                        };
+                        walk(value, Some(format!("{prefix}[{index}]")), out);
+                    }
+                }
+                Value::Null | Value::Tagged(_) => {}
             }
         }
 
@@ -662,7 +752,19 @@ launch_agent:
             config.launch_agent.worktree_root_template,
             "${HOME}/worktrees/${REPO}/${BRANCH}"
         );
+        assert_eq!(
+            config.zellij.tab_name_template.as_deref(),
+            Some("#${ISSUE_NUMBER}")
+        );
         assert_eq!(config.zellij.layout.as_deref(), Some("custom-layout"));
+        assert_eq!(
+            config.launch_agent.global_args.codex,
+            vec!["--full-auto".to_string()]
+        );
+        assert_eq!(
+            config.launch_agent.global_args.claude,
+            vec!["--permission-mode".to_string(), "auto".to_string()]
+        );
     }
 
     #[test]
@@ -713,6 +815,14 @@ launch_agent:
             "implementation/issue-${ISSUE_NUMBER}"
         );
         assert_eq!(config.zellij.layout, None);
+        assert_eq!(
+            config.launch_agent.global_args.codex,
+            vec!["--full-auto".to_string()]
+        );
+        assert_eq!(
+            config.launch_agent.global_args.claude,
+            vec!["--permission-mode".to_string(), "auto".to_string()]
+        );
     }
 
     #[test]
@@ -727,10 +837,19 @@ github:
         assert_eq!(config.runtime.poll_interval_seconds, 3600);
         assert_eq!(config.zellij.session_name, "${REPO}");
         assert_eq!(config.zellij.tab_name, "issue-analysis");
+        assert_eq!(config.zellij.tab_name_template, None);
         assert_eq!(config.zellij.layout, None);
         assert_eq!(
             config.launch_agent.analysis_branch_template,
             "analysis/issue-${ISSUE_NUMBER}"
+        );
+        assert_eq!(
+            config.launch_agent.global_args.claude,
+            vec!["--permission-mode".to_string(), "auto".to_string()]
+        );
+        assert_eq!(
+            config.launch_agent.global_args.codex,
+            vec!["--full-auto".to_string()]
         );
     }
 
@@ -763,7 +882,49 @@ zellij:
         assert_eq!(config.runtime.poll_interval_seconds, 60);
         assert_eq!(config.zellij.session_name, "custom-session");
         assert_eq!(config.zellij.tab_name, "issue-analysis");
+        assert_eq!(config.zellij.tab_name_template, None);
         assert_eq!(config.zellij.layout, None);
+        assert_eq!(
+            config.launch_agent.global_args.codex,
+            vec!["--full-auto".to_string()]
+        );
+    }
+
+    #[test]
+    fn allows_overriding_agent_global_args() {
+        let yaml = sample_config().replace(
+            "  global_args:\n    claude:\n      - \"--permission-mode\"\n      - \"auto\"\n    codex:\n      - \"--full-auto\"\n",
+            "  global_args:\n    claude:\n      - \"--dangerously-skip-permissions\"\n    codex:\n      - \"--sandbox\"\n      - \"workspace-write\"\n",
+        );
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        let config = Config::load_from_str(&yaml, &path).expect("yaml should validate");
+
+        assert_eq!(
+            config.launch_agent.global_args.claude,
+            vec!["--dangerously-skip-permissions".to_string()]
+        );
+        assert_eq!(
+            config.launch_agent.global_args.codex,
+            vec!["--sandbox".to_string(), "workspace-write".to_string()]
+        );
+    }
+
+    #[test]
+    fn parses_config_without_optional_tab_name_template() {
+        let yaml = sample_config().replace("  tab_name_template: \"#${ISSUE_NUMBER}\"\n", "");
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        let config: Config = serde_yaml::from_str(&yaml).expect("yaml should parse");
+        config.validate(&path).expect("config should validate");
+        assert_eq!(config.zellij.tab_name_template, None);
+    }
+
+    #[test]
+    fn rejects_blank_zellij_tab_name_template() {
+        let yaml = sample_config().replace("#${ISSUE_NUMBER}", "   ");
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        let config: Config = serde_yaml::from_str(&yaml).expect("yaml should parse");
+        let error = config.validate(&path).expect_err("validation should fail");
+        assert!(error.to_string().contains("zellij.tab_name_template"));
     }
 
     #[test]
@@ -823,5 +984,17 @@ zellij:
                 );
             }
         }
+    }
+
+    #[test]
+    fn rejects_blank_global_args() {
+        let yaml = sample_config().replace("\"--full-auto\"", "\"   \"");
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        let error = Config::load_from_str(&yaml, &path).expect_err("validation should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("launch_agent.global_args.codex[0]")
+        );
     }
 }

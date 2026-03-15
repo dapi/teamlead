@@ -94,6 +94,34 @@ else
     ((PASS++)) || true
 fi
 
+if grep -Fq '#   global_args:' "$SETTINGS_FILE" && \
+   grep -Fq '#       - "--permission-mode"' "$SETTINGS_FILE" && \
+   grep -Fq '#       - "--full-auto"' "$SETTINGS_FILE"; then
+    echo "  PASS: init documents canonical agent global args defaults"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init documents canonical agent global args defaults"
+    ((FAIL++)) || true
+fi
+
+if grep -Fq 'global_args:' "$SETTINGS_FILE" && \
+   grep -Fq '#   # global_args:' "$SETTINGS_FILE" && \
+   grep -Fq -- '--dangerously-skip-permissions' "$SETTINGS_FILE"; then
+    echo "  PASS: init keeps dangerous claude args as opt-in example"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init keeps dangerous claude args as opt-in example"
+    ((FAIL++)) || true
+fi
+
+if grep -Fq '#   tab_name_template: "#${ISSUE_NUMBER}"' "$SETTINGS_FILE"; then
+    echo "  PASS: init keeps tab_name_template as opt-in example"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init keeps tab_name_template as opt-in example"
+    ((FAIL++)) || true
+fi
+
 if grep -Fq 'plugin location="compact-bar"' "$ANALYSIS_TAB_TEMPLATE_FILE"; then
     echo "  PASS: init bootstraps analysis tab with compact-bar"
     ((PASS++)) || true

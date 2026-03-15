@@ -17,6 +17,8 @@ use crate::shell::Shell;
 const ANALYSIS_TAB_TEMPLATE_PATH: &str = ".ai-teamlead/zellij/analysis-tab.kdl";
 const ANALYSIS_TAB_TEMPLATE_NAME_PLACEHOLDER: &str = "${TAB_NAME}";
 const ANALYSIS_TAB_TEMPLATE_ENTRYPOINT_PLACEHOLDER: &str = "${PANE_ENTRYPOINT}";
+const BINDING_CAPTURE_ATTEMPTS: usize = 20;
+const BINDING_CAPTURE_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 pub struct ZellijLauncher<'a> {
     shell: &'a dyn Shell,
@@ -58,6 +60,10 @@ impl<'a> ZellijLauncher<'a> {
                 "analysis-tab-contract: {}",
                 analysis_tab_template_path.display()
             ),
+        )?;
+        append_launch_log(
+            &launch_log_path,
+            &format!("analysis-tab-name: {}", zellij.tab_name),
         )?;
         let quoted_repo_root = shell_single_quote(repo_root.to_string_lossy().as_ref());
         let quoted_launch_agent = shell_single_quote("./.ai-teamlead/launch-agent.sh");
@@ -374,10 +380,27 @@ pub fn capture_current_binding(
         .context("ZELLIJ_PANE_ID is not set in the launched zellij pane")?;
     let session_id =
         std::env::var("ZELLIJ_SESSION_NAME").unwrap_or_else(|_| zellij.session_name.clone());
-    let (tab_id, _, _) = resolve_current_tab_binding(shell, repo_root, &pane_id)?;
+    capture_current_binding_with_ids(
+        shell,
+        repo_root,
+        runtime,
+        session_uuid,
+        &session_id,
+        &pane_id,
+    )
+}
 
-    runtime.update_zellij_binding(session_uuid, &session_id, &tab_id, &pane_id)?;
-    Ok((session_id, tab_id, pane_id))
+fn capture_current_binding_with_ids(
+    shell: &dyn Shell,
+    repo_root: &Path,
+    runtime: &RuntimeLayout,
+    session_uuid: &str,
+    session_id: &str,
+    pane_id: &str,
+) -> Result<(String, String, String)> {
+    let (tab_id, _, _) = resolve_current_tab_binding(shell, repo_root, pane_id)?;
+    runtime.update_zellij_binding(session_uuid, session_id, &tab_id, pane_id)?;
+    Ok((session_id.to_string(), tab_id, pane_id.to_string()))
 }
 
 fn resolve_current_tab_binding(
@@ -420,11 +443,12 @@ fn resolve_current_tab_binding(
 
         last_current_tab_output = current_tab_output;
         last_list_panes_output = list_panes_output;
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(BINDING_CAPTURE_RETRY_DELAY);
     }
 
     Err(anyhow!(
-        "failed to resolve zellij tab_id for current pane; current_tab_output={:?}; list_panes_output={:?}",
+        "failed to resolve zellij tab_id for current pane after {} attempts; current_tab_output={:?}; list_panes_output={:?}",
+        BINDING_CAPTURE_ATTEMPTS,
         last_current_tab_output,
         last_list_panes_output
     ))
@@ -591,7 +615,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        ZellijLauncher, pane_id_matches, render_analysis_tab_layout, resolve_current_tab_binding,
+        ZellijLauncher, capture_current_binding_with_ids, pane_id_matches,
+        render_analysis_tab_layout, resolve_current_tab_binding,
         resolve_tab_id, resolve_tab_id_from_panes,
     };
     use crate::config::ZellijConfig;
@@ -767,7 +792,7 @@ mod tests {
     }
 
     #[test]
-    fn capture_binding_retries_until_zellij_exposes_current_tab_metadata() {
+    fn resolve_current_tab_binding_retries_until_zellij_exposes_current_tab_metadata() {
         let temp = tempdir().expect("temp dir");
         let repo_root = temp.path().join("repo");
         std::fs::create_dir_all(&repo_root).expect("repo root");
@@ -791,6 +816,71 @@ mod tests {
         let (tab_id, _, _) =
             resolve_current_tab_binding(&shell, &repo_root, "terminal_1").expect("binding");
         assert_eq!(tab_id, "7");
+    }
+
+    #[test]
+    fn capture_current_binding_retries_until_tab_metadata_is_available() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        let git_dir = repo_root.join(".git");
+        std::fs::create_dir_all(&git_dir).expect("git dir");
+
+        let runtime = RuntimeLayout::from_repo_root(&repo_root);
+        runtime.ensure_exists().expect("runtime");
+        let zellij = ZellijConfig {
+            session_name: "ai-teamlead-test".into(),
+            tab_name: "issue-analysis".into(),
+            tab_name_template: None,
+            layout: None,
+        };
+        let repo = RepoContext {
+            repo_root: repo_root.clone(),
+            git_dir,
+            github_owner: "dapi".into(),
+            github_repo: "teamlead".into(),
+        };
+        let manifest = runtime
+            .create_claim_binding(
+                &repo,
+                "PVT_test_project",
+                &zellij,
+                42,
+                FlowStage::Analysis,
+                "Analysis In Progress",
+            )
+            .expect("manifest");
+
+        let shell = FakeShell::default()
+            .with_response_sequence(
+                "zellij action current-tab-info --json",
+                &["", r#"{"name":"issue-analysis","tab_id":7}"#],
+            )
+            .with_response_sequence(
+                "zellij action list-panes --json -t -s",
+                &["", r#"[{"id":"1","tab_id":7,"focused":true}]"#],
+            );
+
+        let (session_id, tab_id, pane_id) = capture_current_binding_with_ids(
+            &shell,
+            &repo_root,
+            &runtime,
+            &manifest.session_uuid,
+            "ai-teamlead-test",
+            "1",
+        )
+        .expect("binding");
+
+        assert_eq!(session_id, "ai-teamlead-test");
+        assert_eq!(tab_id, "7");
+        assert_eq!(pane_id, "1");
+
+        let manifest = runtime
+            .load_session_manifest(&manifest.session_uuid)
+            .expect("manifest lookup")
+            .expect("manifest");
+        assert_eq!(manifest.zellij.session_id, "ai-teamlead-test");
+        assert_eq!(manifest.zellij.tab_id, "7");
+        assert_eq!(manifest.zellij.pane_id, "1");
     }
 
     #[test]
@@ -820,6 +910,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: None,
         };
 
@@ -905,6 +996,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: Some("custom-layout".into()),
         };
 
@@ -978,6 +1070,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: None,
         };
 
@@ -1068,6 +1161,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: None,
         };
 
@@ -1124,6 +1218,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: None,
         };
 
@@ -1184,6 +1279,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: None,
         };
 
@@ -1237,6 +1333,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: Some("missing-layout".into()),
         };
 

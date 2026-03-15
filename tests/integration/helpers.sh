@@ -56,7 +56,7 @@ assert_dir_exists() {
 
 assert_file_contains() {
     local path="$1" pattern="$2" msg="$3"
-    if [[ -f "$path" ]] && grep -Fq "$pattern" "$path"; then
+    if [[ -f "$path" ]] && grep -Fq -- "$pattern" "$path"; then
         echo "  PASS: $msg"
         ((PASS++)) || true
     else
@@ -69,7 +69,7 @@ assert_file_contains() {
 
 assert_text_contains() {
     local text="$1" pattern="$2" msg="$3"
-    if grep -Fq "$pattern" <<<"$text"; then
+    if grep -Fq -- "$pattern" <<<"$text"; then
         echo "  PASS: $msg"
         ((PASS++)) || true
     else
@@ -316,6 +316,7 @@ set -euo pipefail
 OUT_DIR="${AI_TEAMLEAD_STUB_OUT_DIR:?}"
 TARGET_CD=""
 PROMPT=""
+ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -327,8 +328,13 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            PROMPT="$1"
-            shift
+            if [[ $# -eq 1 ]]; then
+                PROMPT="$1"
+                shift
+            else
+                ARGS+=("$1")
+                shift
+            fi
             ;;
     esac
 done
@@ -339,6 +345,7 @@ fi
 
 printf 'invoked\n' > "$OUT_DIR/codex.invoked"
 printf '%s\n' "$PWD" > "$OUT_DIR/codex.cwd"
+printf '%s\n' "${ARGS[@]}" > "$OUT_DIR/codex.args"
 printf '%s\n' "${AI_TEAMLEAD_ISSUE_URL:-}" > "$OUT_DIR/issue_url"
 printf '%s\n' "${AI_TEAMLEAD_SESSION_UUID:-}" > "$OUT_DIR/session_uuid"
 printf '%s\n' "${AI_TEAMLEAD_ANALYSIS_BRANCH:-}" > "$OUT_DIR/analysis_branch"
@@ -349,7 +356,37 @@ printf '%s\n' "$PROMPT" > "$OUT_DIR/prompt.txt"
 sleep "${AI_TEAMLEAD_STUB_AGENT_SLEEP:-5}"
 EOF
     chmod +x "$bin_dir/codex"
-    ln -sf codex "$bin_dir/claude"
+    cat > "$bin_dir/claude" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+OUT_DIR="${AI_TEAMLEAD_STUB_OUT_DIR:?}"
+PROMPT=""
+ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    if [[ $# -eq 1 ]]; then
+        PROMPT="$1"
+        shift
+    else
+        ARGS+=("$1")
+        shift
+    fi
+done
+
+printf 'invoked\n' > "$OUT_DIR/claude.invoked"
+printf '%s\n' "$PWD" > "$OUT_DIR/claude.cwd"
+printf '%s\n' "${ARGS[@]}" > "$OUT_DIR/claude.args"
+printf '%s\n' "${AI_TEAMLEAD_ISSUE_URL:-}" > "$OUT_DIR/issue_url"
+printf '%s\n' "${AI_TEAMLEAD_SESSION_UUID:-}" > "$OUT_DIR/session_uuid"
+printf '%s\n' "${AI_TEAMLEAD_ANALYSIS_BRANCH:-}" > "$OUT_DIR/analysis_branch"
+printf '%s\n' "${AI_TEAMLEAD_ANALYSIS_ARTIFACTS_DIR:-}" > "$OUT_DIR/analysis_artifacts_dir"
+printf '%s\n' "${AI_TEAMLEAD_WORKTREE_ROOT:-}" > "$OUT_DIR/worktree_root"
+printf '%s\n' "$PROMPT" > "$OUT_DIR/prompt.txt"
+
+sleep "${AI_TEAMLEAD_STUB_AGENT_SLEEP:-5}"
+EOF
+    chmod +x "$bin_dir/claude"
     export AI_TEAMLEAD_STUB_OUT_DIR="$out_dir"
 }
 
@@ -531,6 +568,8 @@ EOF
 }
 
 cleanup_zellij() {
+    # WARNING: this helper kills every visible zellij session.
+    # Use it only in isolated headless/docker test environments.
     while IFS= read -r session_name; do
         [[ -n "$session_name" ]] || continue
         zellij kill-session "$session_name" >/dev/null 2>&1 || true

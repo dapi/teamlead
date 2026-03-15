@@ -100,22 +100,35 @@
   documented defaults, а не как обязательный активный YAML;
 - `zellij.session_name` документируется как template `${REPO}`;
 - `zellij.tab_name` документируется со значением `issue-analysis`;
+- optional `zellij.tab_name_template` показывается в шаблоне как
+  закомментированный opt-in пример `#${ISSUE_NUMBER}` и не включается в runtime
+  default-layer;
 - `zellij.layout` документируется со значением `compact` как opt-in пример, а
   не как runtime default;
 - `./.ai-teamlead/zellij/analysis-tab.kdl` bootstrap-ится как versioned template
   для analysis tab с placeholders `${TAB_NAME}` и `${PANE_ENTRYPOINT}` и
-  встроенным `compact-bar` как bootstrap default для tab-level UX
+  встроенным `compact-bar` как bootstrap default для tab-level UX;
 - `launch_agent.analysis_branch_template` документируется как
   `analysis/issue-${ISSUE_NUMBER}`;
 - `launch_agent.worktree_root_template` документируется как
   `${HOME}/worktrees/${REPO}/${BRANCH}`;
 - `launch_agent.analysis_artifacts_dir_template` документируется как
-  `specs/issues/${ISSUE_NUMBER}`.
+  `specs/issues/${ISSUE_NUMBER}`;
+- `launch_agent.global_args.codex` и `launch_agent.global_args.claude`
+  документируются как canonical runtime defaults;
+- более агрессивные launcher args, например
+  `--dangerously-skip-permissions` для `claude`, показываются только как
+  opt-in пример и не входят в runtime default-layer.
 
 Runtime loading при этом строится как `defaults + active YAML overrides`:
 
 - `github.project_id` остается `required-without-default`;
 - отсутствующие defaulted-поля подставляются из canonical Rust default-layer;
+- `launch_agent.global_args.*` при отсутствии active override берутся из runtime
+  defaults приложения;
+- `zellij.tab_name_template` остается допустимым `example-only extension`:
+  шаблон показывает, как включить issue-aware tab naming, но отсутствие active
+  override не меняет runtime path;
 - `zellij.layout` остается допустимым `example-only extension`: шаблон
   показывает, как включить custom layout, но отсутствие active override не
   меняет launcher path;
@@ -128,9 +141,13 @@ Runtime loading при этом строится как `defaults + active YAML 
    GitHub Project id
 2. при необходимости раскомментировать и скорректировать literal или template
    `zellij.session_name`
-3. при необходимости раскомментировать и скорректировать `zellij.layout`,
-   `./.ai-teamlead/zellij/analysis-tab.kdl` и `launch_agent.*`
-5. только после этого запускать `poll` или `run`
+3. при необходимости раскомментировать и скорректировать
+   `zellij.tab_name_template`, `zellij.layout` и
+   `./.ai-teamlead/zellij/analysis-tab.kdl`
+4. при необходимости раскомментировать и скорректировать `launch_agent.*`
+   templates
+5. при необходимости заменить canonical agent defaults своими override-args
+6. только после этого запускать `poll` или `run`
 
 Если placeholder не заменен или id невалиден, текущая реализация не проходит
 этап загрузки project snapshot и завершает `poll`/`run` ошибкой.

@@ -20,6 +20,27 @@ pub fn render_zellij_session_name(template: &str, repo: &str) -> Result<String> 
     Ok(rendered)
 }
 
+pub fn render_zellij_tab_name(
+    fallback: &str,
+    template: Option<&str>,
+    issue_number: u64,
+) -> Result<String> {
+    let Some(template) = template else {
+        return Ok(fallback.to_string());
+    };
+
+    let issue_number = issue_number.to_string();
+    let rendered = render_template(template, &[("ISSUE_NUMBER", issue_number.as_str())]);
+    let unresolved = find_placeholders(&rendered);
+    if !unresolved.is_empty() {
+        bail!(
+            "invalid zellij.tab_name_template: only ${{ISSUE_NUMBER}} is supported; unresolved placeholders: {}",
+            unresolved.join(", ")
+        );
+    }
+    Ok(rendered)
+}
+
 fn find_placeholders(value: &str) -> Vec<String> {
     let mut placeholders = Vec::new();
     let mut offset = 0;
@@ -41,7 +62,7 @@ fn find_placeholders(value: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{render_template, render_zellij_session_name};
+    use super::{render_template, render_zellij_session_name, render_zellij_tab_name};
 
     #[test]
     fn renders_template_variables() {
@@ -73,6 +94,34 @@ mod tests {
     fn rejects_unsupported_zellij_placeholders() {
         let error =
             render_zellij_session_name("${REPO}-${BRANCH}", "teamlead").expect_err("must fail");
+        assert!(error.to_string().contains("${BRANCH}"));
+    }
+
+    #[test]
+    fn keeps_fallback_tab_name_without_template() {
+        let rendered =
+            render_zellij_tab_name("issue-analysis", None, 42).expect("tab name rendered");
+        assert_eq!(rendered, "issue-analysis");
+    }
+
+    #[test]
+    fn renders_zellij_tab_name_from_issue_number_template() {
+        let rendered = render_zellij_tab_name("issue-analysis", Some("#${ISSUE_NUMBER}"), 42)
+            .expect("tab name rendered");
+        assert_eq!(rendered, "#42");
+    }
+
+    #[test]
+    fn keeps_literal_zellij_tab_name_template() {
+        let rendered = render_zellij_tab_name("issue-analysis", Some("analysis-issue"), 42)
+            .expect("tab name rendered");
+        assert_eq!(rendered, "analysis-issue");
+    }
+
+    #[test]
+    fn rejects_unsupported_zellij_tab_name_placeholders() {
+        let error = render_zellij_tab_name("issue-analysis", Some("${ISSUE_NUMBER}-${BRANCH}"), 42)
+            .expect_err("must fail");
         assert!(error.to_string().contains("${BRANCH}"));
     }
 }

@@ -18,7 +18,7 @@ use crate::project_files::ProjectPaths;
 use crate::repo::RepoContext;
 use crate::runtime::{RuntimeLayout, SessionManifest};
 use crate::shell::{Shell, SystemShell};
-use crate::templates::{render_template, render_zellij_session_name};
+use crate::templates::{render_template, render_zellij_session_name, render_zellij_tab_name};
 use crate::zellij::{ZellijLauncher, capture_current_binding};
 
 pub fn run() -> Result<()> {
@@ -72,6 +72,8 @@ fn run_poll(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
             );
         }
         PollCycleOutcome::Launched(launch) => {
+            let launch_zellij =
+                resolve_launch_zellij_config(&context.config.zellij, launch.issue_number)?;
             println!(
                 "poll: claimed issue #{} -> {} session_uuid={}",
                 launch.issue_number,
@@ -82,11 +84,7 @@ fn run_poll(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
                     .analysis_in_progress,
                 launch.session_uuid
             );
-            print_zellij_launch_target(
-                &context.runtime,
-                &launch.session_uuid,
-                &context.config.zellij,
-            );
+            print_zellij_launch_target(&context.runtime, &launch.session_uuid, &launch_zellij);
         }
     }
     Ok(())
@@ -109,15 +107,13 @@ fn run_loop(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
                 );
             }
             Ok(PollCycleOutcome::Launched(launch)) => {
+                let launch_zellij =
+                    resolve_launch_zellij_config(&context.config.zellij, launch.issue_number)?;
                 println!(
                     "loop: cycle={cycle_number} launched issue #{} session_uuid={}",
                     launch.issue_number, launch.session_uuid
                 );
-                print_zellij_launch_target(
-                    &context.runtime,
-                    &launch.session_uuid,
-                    &context.config.zellij,
-                );
+                print_zellij_launch_target(&context.runtime, &launch.session_uuid, &launch_zellij);
             }
             Err(error) => {
                 eprintln!("loop: cycle={cycle_number} failed: {error:#}");
@@ -190,16 +186,13 @@ fn run_manual_run(
         })
         .ok_or_else(|| anyhow::anyhow!("issue #{issue_number} is not linked to the project"))?;
 
+    let launch_zellij = resolve_launch_zellij_config(&context.config.zellij, issue.issue_number)?;
     let launch = run_issue_entrypoint(&context, &github, &zellij, &snapshot, issue, debug)?;
     println!(
         "run: issue=#{} launched in zellij session_uuid={}",
         launch.issue_number, launch.session_uuid
     );
-    print_zellij_launch_target(
-        &context.runtime,
-        &launch.session_uuid,
-        &context.config.zellij,
-    );
+    print_zellij_launch_target(&context.runtime, &launch.session_uuid, &launch_zellij);
     Ok(())
 }
 
@@ -242,8 +235,16 @@ fn run_issue_entrypoint(
             .with_context(|| format!("failed to validate {} preconditions", stage.as_str()));
     }
 
-    let manifest =
-        prepare_session_manifest(context, github, snapshot, issue, current_status, stage)?;
+    let launch_zellij = resolve_launch_zellij_config(&context.config.zellij, issue.issue_number)?;
+    let manifest = prepare_session_manifest(
+        context,
+        github,
+        snapshot,
+        issue,
+        current_status,
+        stage,
+        &launch_zellij,
+    )?;
     let issue_url = format!(
         "https://github.com/{}/{}/issues/{}",
         context.repo.github_owner, context.repo.github_repo, issue.issue_number
@@ -253,7 +254,7 @@ fn run_issue_entrypoint(
         &context.repo,
         &context.repo.repo_root,
         &context.runtime,
-        &context.config.zellij,
+        &launch_zellij,
         stage,
         &issue_url,
         &manifest.session_uuid,
@@ -359,6 +360,7 @@ fn prepare_session_manifest(
     issue: &ProjectIssueItem,
     current_status: &str,
     stage: FlowStage,
+    launch_zellij: &crate::config::ZellijConfig,
 ) -> Result<SessionManifest> {
     let target_status = match stage {
         FlowStage::Analysis => context
@@ -396,7 +398,7 @@ fn prepare_session_manifest(
         return context.runtime.create_claim_binding(
             &context.repo,
             &context.config.github.project_id,
-            &context.config.zellij,
+            launch_zellij,
             issue.issue_number,
             stage,
             target_status,
@@ -499,6 +501,10 @@ fn print_zellij_launch_target(
         .as_ref()
         .map(|session| session.zellij.tab_id.as_str())
         .unwrap_or("pending");
+    let tab_name = manifest
+        .as_ref()
+        .map(|session| session.zellij.tab_name.as_str())
+        .unwrap_or(zellij.tab_name.as_str());
     let pane_id = manifest
         .as_ref()
         .map(|session| session.zellij.pane_id.as_str())
@@ -507,7 +513,7 @@ fn print_zellij_launch_target(
     println!(
         "launch target: zellij_session={} tab={} tab_id={} pane_id={} log={}",
         session_id,
-        zellij.tab_name,
+        tab_name,
         tab_id,
         pane_id,
         launch_log_path.display()
@@ -573,10 +579,11 @@ fn run_internal_bind_zellij_pane(shell: &dyn Shell, session_uuid: &str) -> Resul
 
 fn run_internal_launch_zellij_fixture(shell: &dyn Shell, issue_number: u64) -> Result<()> {
     let context = load_execution_context(shell, None)?;
+    let launch_zellij = resolve_launch_zellij_config(&context.config.zellij, issue_number)?;
     let manifest = context.runtime.create_claim_binding(
         &context.repo,
         &context.config.github.project_id,
-        &context.config.zellij,
+        &launch_zellij,
         issue_number,
         FlowStage::Analysis,
         &context
@@ -595,7 +602,7 @@ fn run_internal_launch_zellij_fixture(shell: &dyn Shell, issue_number: u64) -> R
         &context.repo,
         &context.repo.repo_root,
         &context.runtime,
-        &context.config.zellij,
+        &launch_zellij,
         FlowStage::Analysis,
         &issue_url,
         &manifest.session_uuid,
@@ -633,6 +640,14 @@ fn run_internal_render_launch_agent_context(shell: &dyn Shell, issue_ref: &str) 
     println!("BRANCH={}", shell_quote(&rendered.branch));
     println!("WORKTREE_ROOT={}", shell_quote(&rendered.worktree_root));
     println!("ARTIFACTS_DIR={}", shell_quote(&rendered.artifacts_dir));
+    println!(
+        "CLAUDE_GLOBAL_ARGS={}",
+        shell_quote_array(&rendered.claude_global_args)
+    );
+    println!(
+        "CODEX_GLOBAL_ARGS={}",
+        shell_quote_array(&rendered.codex_global_args)
+    );
     Ok(())
 }
 
@@ -691,6 +706,19 @@ fn resolve_zellij_session_name(
         .to_string()
 }
 
+fn resolve_launch_zellij_config(
+    zellij: &crate::config::ZellijConfig,
+    issue_number: u64,
+) -> Result<crate::config::ZellijConfig> {
+    let mut resolved = zellij.clone();
+    resolved.tab_name = render_zellij_tab_name(
+        &zellij.tab_name,
+        zellij.tab_name_template.as_deref(),
+        issue_number,
+    )?;
+    Ok(resolved)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LaunchAgentContext {
     issue_number: u64,
@@ -699,6 +727,8 @@ struct LaunchAgentContext {
     branch: String,
     worktree_root: String,
     artifacts_dir: String,
+    claude_global_args: Vec<String>,
+    codex_global_args: Vec<String>,
 }
 
 fn render_launch_agent_context(
@@ -767,12 +797,15 @@ fn render_launch_agent_context(
         branch,
         worktree_root,
         artifacts_dir,
+        claude_global_args: context.config.launch_agent.global_args.claude.clone(),
+        codex_global_args: context.config.launch_agent.global_args.codex.clone(),
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_zellij_session_name;
+    use super::{resolve_launch_zellij_config, resolve_zellij_session_name};
+    use crate::config::ZellijConfig;
 
     #[test]
     fn zellij_session_override_has_highest_priority() {
@@ -801,18 +834,57 @@ mod tests {
         let resolved = resolve_zellij_session_name("settings-session", Some("   "), Some(""));
         assert_eq!(resolved, "settings-session");
     }
+
+    #[test]
+    fn resolves_issue_aware_tab_name_from_template() {
+        let zellij = ZellijConfig {
+            session_name: "example".into(),
+            tab_name: "issue-analysis".into(),
+            tab_name_template: Some("#${ISSUE_NUMBER}".into()),
+            layout: None,
+        };
+
+        let resolved = resolve_launch_zellij_config(&zellij, 42).expect("resolved config");
+        assert_eq!(resolved.tab_name, "#42");
+    }
+
+    #[test]
+    fn keeps_stable_tab_name_without_template() {
+        let zellij = ZellijConfig {
+            session_name: "example".into(),
+            tab_name: "issue-analysis".into(),
+            tab_name_template: None,
+            layout: None,
+        };
+
+        let resolved = resolve_launch_zellij_config(&zellij, 42).expect("resolved config");
+        assert_eq!(resolved.tab_name, "issue-analysis");
+    }
 }
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
+fn shell_quote_array(values: &[String]) -> String {
+    let quoted = values
+        .iter()
+        .map(|value| shell_quote(value))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("({quoted})")
+}
+
 #[cfg(test)]
 mod launch_agent_tests {
-    use super::{ExecutionContext, LaunchAgentContext, validate_stage_preconditions};
+    use super::{
+        ExecutionContext, LaunchAgentContext, render_launch_agent_context, shell_quote_array,
+        validate_stage_preconditions,
+    };
     use crate::config::{
         Config, FlowStatuses, GithubConfig, ImplementationFlowStatuses, IssueAnalysisFlowConfig,
-        IssueImplementationFlowConfig, LaunchAgentConfig, RuntimeConfig, ZellijConfig,
+        IssueImplementationFlowConfig, LaunchAgentConfig, LaunchAgentGlobalArgsConfig,
+        RuntimeConfig, ZellijConfig,
     };
     use crate::domain::FlowStage;
     use crate::repo::RepoContext;
@@ -844,6 +916,8 @@ mod launch_agent_tests {
             branch,
             worktree_root: worktree,
             artifacts_dir: artifacts,
+            claude_global_args: vec!["--permission-mode".into(), "auto".into()],
+            codex_global_args: vec!["--full-auto".into()],
         };
 
         assert_eq!(context.branch, "analysis/issue-42");
@@ -852,6 +926,27 @@ mod launch_agent_tests {
             "/home/danil/worktrees/teamlead/analysis/issue-42"
         );
         assert_eq!(context.artifacts_dir, "specs/issues/42");
+        assert_eq!(
+            shell_quote_array(&context.codex_global_args),
+            "('--full-auto')"
+        );
+    }
+
+    #[test]
+    fn render_launch_agent_context_includes_default_global_args() {
+        let temp = tempdir().expect("temp dir");
+        let repo_root = temp.path().join("repo");
+        std::fs::create_dir_all(repo_root.join(".git")).expect("git dir");
+
+        let context = test_execution_context(repo_root);
+        let rendered = render_launch_agent_context(&context, 42, FlowStage::Analysis)
+            .expect("render launch context");
+
+        assert_eq!(rendered.codex_global_args, vec!["--full-auto".to_string()]);
+        assert_eq!(
+            rendered.claude_global_args,
+            vec!["--permission-mode".to_string(), "auto".to_string()]
+        );
     }
 
     #[test]
@@ -935,12 +1030,14 @@ mod launch_agent_tests {
                 zellij: ZellijConfig {
                     session_name: "example".into(),
                     tab_name: "issue-analysis".into(),
+                    tab_name_template: None,
                     layout: None,
                 },
                 launch_agent: LaunchAgentConfig {
                     analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}".into(),
                     worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}".into(),
                     analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}".into(),
+                    global_args: LaunchAgentGlobalArgsConfig::default(),
                     implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}".into(),
                     implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
                         .into(),

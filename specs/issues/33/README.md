@@ -1,6 +1,6 @@
 # Issue 33: zero-config шаблон `settings.yml` с canonical default-layer и guardrail
 
-Статус: draft
+Статус: approved
 Тип задачи: feature
 Размер: medium
 Последнее обновление: 2026-03-14

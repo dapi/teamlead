@@ -1,6 +1,6 @@
 # Issue 49: `zellij` issue-aware tab naming for `tab` launch target
 
-Статус: draft
+Статус: approved
 Тип задачи: `feature`
 Тип проекта: `infra/platform`
 Размер: `medium`

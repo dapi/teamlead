@@ -20,11 +20,19 @@ pub fn select_next_backlog_project_item<'a>(
     statuses: &FlowStatuses,
     owner: &str,
     repo: &str,
+    assignee_filter: Option<&str>,
 ) -> Option<&'a ProjectIssueItem> {
     items
         .iter()
         .filter(|item| item.matches_repo(owner, repo))
         .filter(|item| item.issue_state == "OPEN")
+        .filter(|item| {
+            assignee_filter.is_none_or(|assignee_filter| {
+                item.assignees
+                    .iter()
+                    .any(|assignee| assignee == assignee_filter)
+            })
+        })
         .find(|item| item.status_name.as_deref() == Some(statuses.backlog.as_str()))
 }
 
@@ -371,6 +379,7 @@ mod tests {
                 issue_state: "OPEN".into(),
                 repo_owner: "other".into(),
                 repo_name: "repo".into(),
+                assignees: vec![],
                 status_name: Some("Backlog".into()),
                 status_option_id: Some("1".into()),
             },
@@ -380,6 +389,7 @@ mod tests {
                 issue_state: "OPEN".into(),
                 repo_owner: "dapi".into(),
                 repo_name: "teamlead".into(),
+                assignees: vec!["dapi".into()],
                 status_name: Some("Backlog".into()),
                 status_option_id: Some("2".into()),
             },
@@ -389,13 +399,116 @@ mod tests {
                 issue_state: "OPEN".into(),
                 repo_owner: "dapi".into(),
                 repo_name: "teamlead".into(),
+                assignees: vec!["someone".into()],
                 status_name: Some("Backlog".into()),
                 status_option_id: Some("3".into()),
             },
         ];
 
         let selected =
-            select_next_backlog_project_item(&items, &statuses(), "dapi", "teamlead").unwrap();
+            select_next_backlog_project_item(&items, &statuses(), "dapi", "teamlead", None)
+                .unwrap();
+        assert_eq!(selected.item_id, "item-2");
+    }
+
+    #[test]
+    fn keeps_old_behavior_when_assignee_filter_is_not_set() {
+        let items = vec![
+            ProjectIssueItem {
+                item_id: "item-1".into(),
+                issue_number: 7,
+                issue_state: "OPEN".into(),
+                repo_owner: "dapi".into(),
+                repo_name: "teamlead".into(),
+                assignees: vec![],
+                status_name: Some("Backlog".into()),
+                status_option_id: Some("1".into()),
+            },
+            ProjectIssueItem {
+                item_id: "item-2".into(),
+                issue_number: 8,
+                issue_state: "OPEN".into(),
+                repo_owner: "dapi".into(),
+                repo_name: "teamlead".into(),
+                assignees: vec!["alice".into()],
+                status_name: Some("Backlog".into()),
+                status_option_id: Some("2".into()),
+            },
+        ];
+
+        let selected =
+            select_next_backlog_project_item(&items, &statuses(), "dapi", "teamlead", None)
+                .unwrap();
+
+        assert_eq!(selected.item_id, "item-1");
+    }
+
+    #[test]
+    fn filters_backlog_items_by_assignee() {
+        let items = vec![
+            ProjectIssueItem {
+                item_id: "item-1".into(),
+                issue_number: 7,
+                issue_state: "OPEN".into(),
+                repo_owner: "dapi".into(),
+                repo_name: "teamlead".into(),
+                assignees: vec!["alice".into()],
+                status_name: Some("Backlog".into()),
+                status_option_id: Some("1".into()),
+            },
+            ProjectIssueItem {
+                item_id: "item-2".into(),
+                issue_number: 8,
+                issue_state: "OPEN".into(),
+                repo_owner: "dapi".into(),
+                repo_name: "teamlead".into(),
+                assignees: vec!["bob".into(), "alice".into()],
+                status_name: Some("Backlog".into()),
+                status_option_id: Some("2".into()),
+            },
+        ];
+
+        let selected =
+            select_next_backlog_project_item(&items, &statuses(), "dapi", "teamlead", Some("bob"))
+                .unwrap();
+
+        assert_eq!(selected.item_id, "item-2");
+    }
+
+    #[test]
+    fn skips_unassigned_items_when_assignee_filter_is_set() {
+        let items = vec![
+            ProjectIssueItem {
+                item_id: "item-1".into(),
+                issue_number: 7,
+                issue_state: "OPEN".into(),
+                repo_owner: "dapi".into(),
+                repo_name: "teamlead".into(),
+                assignees: vec![],
+                status_name: Some("Backlog".into()),
+                status_option_id: Some("1".into()),
+            },
+            ProjectIssueItem {
+                item_id: "item-2".into(),
+                issue_number: 8,
+                issue_state: "OPEN".into(),
+                repo_owner: "dapi".into(),
+                repo_name: "teamlead".into(),
+                assignees: vec!["alice".into()],
+                status_name: Some("Backlog".into()),
+                status_option_id: Some("2".into()),
+            },
+        ];
+
+        let selected = select_next_backlog_project_item(
+            &items,
+            &statuses(),
+            "dapi",
+            "teamlead",
+            Some("alice"),
+        )
+        .unwrap();
+
         assert_eq!(selected.item_id, "item-2");
     }
 }

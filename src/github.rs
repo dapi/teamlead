@@ -43,6 +43,11 @@ impl<'a> GhProjectClient<'a> {
             ... on Issue {
               number
               state
+              assignees(first: 20) {
+                nodes {
+                  login
+                }
+              }
               repository {
                 name
                 owner {
@@ -104,6 +109,12 @@ impl<'a> GhProjectClient<'a> {
                 issue_state: content.state,
                 repo_owner: content.repository.owner.login,
                 repo_name: content.repository.name,
+                assignees: content
+                    .assignees
+                    .nodes
+                    .into_iter()
+                    .map(|assignee| assignee.login)
+                    .collect(),
                 status_name,
                 status_option_id,
             });
@@ -160,6 +171,11 @@ impl<'a> GhProjectClient<'a> {
             ],
         )?;
         Ok(())
+    }
+
+    pub fn resolve_current_user(&self, cwd: &Path) -> Result<String> {
+        self.shell
+            .run(cwd, "gh", &["api", "user", "--jq", ".login"])
     }
 
     pub fn list_pull_requests_for_head(
@@ -366,6 +382,7 @@ pub struct ProjectIssueItem {
     pub issue_state: String,
     pub repo_owner: String,
     pub repo_name: String,
+    pub assignees: Vec<String>,
     pub status_name: Option<String>,
     pub status_option_id: Option<String>,
 }
@@ -473,7 +490,20 @@ struct ProjectItemStatusValue {
 struct ProjectIssueContent {
     number: u64,
     state: String,
+    #[serde(default)]
+    assignees: ProjectIssueAssigneesConnection,
     repository: ProjectIssueRepository,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ProjectIssueAssigneesConnection {
+    #[serde(default)]
+    nodes: Vec<ProjectIssueAssignee>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectIssueAssignee {
+    login: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -611,6 +641,11 @@ mod tests {
             ... on Issue {
               number
               state
+              assignees(first: 20) {
+                nodes {
+                  login
+                }
+              }
               repository {
                 name
                 owner {
@@ -629,7 +664,7 @@ mod tests {
                 "gh api graphql -f query={query} -F projectId={}",
                 "PVT_project"
             ),
-            r#"{"data":{"node":{"id":"PVT_project","title":"teamlead","field":{"id":"field1","name":"Status","options":[{"id":"opt-backlog","name":"Backlog"},{"id":"opt-progress","name":"Analysis In Progress"}]},"items":{"nodes":[{"id":"item-1","fieldValueByName":{"name":"Backlog","optionId":"opt-backlog"},"content":{"number":42,"state":"OPEN","repository":{"name":"teamlead","owner":{"login":"dapi"}}}}]}}}}"#,
+            r#"{"data":{"node":{"id":"PVT_project","title":"teamlead","field":{"id":"field1","name":"Status","options":[{"id":"opt-backlog","name":"Backlog"},{"id":"opt-progress","name":"Analysis In Progress"}]},"items":{"nodes":[{"id":"item-1","fieldValueByName":{"name":"Backlog","optionId":"opt-backlog"},"content":{"number":42,"state":"OPEN","assignees":{"nodes":[{"login":"dapi"}]},"repository":{"name":"teamlead","owner":{"login":"dapi"}}}}]}}}}"#,
         );
 
         let client = GhProjectClient::new(&shell);
@@ -644,6 +679,7 @@ mod tests {
         );
         assert_eq!(snapshot.items.len(), 1);
         assert_eq!(snapshot.items[0].issue_number, 42);
+        assert_eq!(snapshot.items[0].assignees, vec!["dapi"]);
     }
 
     #[test]
@@ -660,6 +696,18 @@ mod tests {
             .option_id_by_name("Backlog")
             .expect_err("missing option should fail");
         assert!(error.to_string().contains("Backlog"));
+    }
+
+    #[test]
+    fn resolves_current_user_via_gh_api_user() {
+        let shell = FakeShell::default().with_response("gh api user --jq .login", "current-user");
+        let client = GhProjectClient::new(&shell);
+
+        let login = client
+            .resolve_current_user(&PathBuf::from("/repo"))
+            .expect("current user should resolve");
+
+        assert_eq!(login, "current-user");
     }
 
     #[test]

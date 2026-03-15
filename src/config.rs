@@ -10,6 +10,7 @@ pub const DEFAULT_ZELLIJ_TAB_NAME_TEMPLATE: &str = "#${ISSUE_NUMBER}";
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Config {
     pub github: GithubConfig,
+    pub poll: Option<PollConfig>,
     pub issue_analysis_flow: IssueAnalysisFlowConfig,
     pub issue_implementation_flow: IssueImplementationFlowConfig,
     pub runtime: RuntimeConfig,
@@ -47,6 +48,15 @@ impl Config {
             "github.project_id must not be empty in {}",
             path.display()
         );
+        if let Some(poll) = &self.poll
+            && let Some(assignee_filter) = &poll.assignee_filter
+        {
+            anyhow::ensure!(
+                !assignee_filter.trim().is_empty(),
+                "poll.assignee_filter must not be empty in {}",
+                path.display()
+            );
+        }
         anyhow::ensure!(
             self.runtime.max_parallel >= 1,
             "runtime.max_parallel must be >= 1 in {}",
@@ -137,6 +147,7 @@ impl Config {
 #[serde(default)]
 struct RawConfig {
     github: RawGithubConfig,
+    poll: Option<PollConfig>,
     issue_analysis_flow: IssueAnalysisFlowConfig,
     issue_implementation_flow: IssueImplementationFlowConfig,
     runtime: RuntimeConfig,
@@ -150,6 +161,7 @@ impl RawConfig {
             github: GithubConfig {
                 project_id: self.github.project_id,
             },
+            poll: self.poll,
             issue_analysis_flow: self.issue_analysis_flow,
             issue_implementation_flow: self.issue_implementation_flow,
             runtime: self.runtime,
@@ -168,6 +180,11 @@ struct RawGithubConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GithubConfig {
     pub project_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PollConfig {
+    pub assignee_filter: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -513,7 +530,7 @@ mod tests {
     }
 
     const SETTINGS_TEMPLATE: &str = include_str!("../templates/init/settings.yml");
-    const FIELD_CONTRACTS: [FieldContract; 32] = [
+    const FIELD_CONTRACTS: [FieldContract; 33] = [
         FieldContract {
             key: "github.project_id",
             kind: FieldKind::RequiredWithoutDefault,
@@ -591,6 +608,12 @@ mod tests {
             kind: FieldKind::DefaultedByApplication,
             runtime_default: Some("Implementation Blocked"),
             template_line: "#     implementation_blocked: \"Implementation Blocked\"",
+        },
+        FieldContract {
+            key: "poll.assignee_filter",
+            kind: FieldKind::ExampleOnlyExtension,
+            runtime_default: None,
+            template_line: "#   assignee_filter: \"$me\"",
         },
         FieldContract {
             key: "runtime.max_parallel",
@@ -713,6 +736,9 @@ mod tests {
 github:
   project_id: "PVT_kwHNeaPOAUaljg"
 
+poll:
+  assignee_filter: "$me"
+
 issue_analysis_flow:
   statuses:
     backlog: "Backlog"
@@ -766,6 +792,7 @@ launch_agent:
             github: GithubConfig {
                 project_id: project_id.into(),
             },
+            poll: None,
             issue_analysis_flow: IssueAnalysisFlowConfig::default(),
             issue_implementation_flow: IssueImplementationFlowConfig::default(),
             runtime: RuntimeConfig::default(),
@@ -826,6 +853,13 @@ launch_agent:
         let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
         let config = Config::load_from_str(sample_config(), &path).expect("yaml should parse");
         assert_eq!(config.github.project_id, "PVT_kwHNeaPOAUaljg");
+        assert_eq!(
+            config
+                .poll
+                .as_ref()
+                .and_then(|poll| poll.assignee_filter.as_deref()),
+            Some("$me")
+        );
         assert_eq!(config.runtime.max_parallel, 1);
         assert_eq!(
             config.launch_agent.worktree_root_template,
@@ -891,6 +925,7 @@ launch_agent:
 "#;
         let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
         let config = Config::load_from_str(yaml, &path).expect("legacy config should validate");
+        assert_eq!(config.poll, None);
         assert_eq!(
             config.issue_implementation_flow.statuses.waiting_for_ci,
             "Waiting for CI"
@@ -923,6 +958,7 @@ github:
 "#;
         let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
         let config = Config::load_from_str(yaml, &path).expect("minimal yaml should validate");
+        assert_eq!(config.poll, None);
         assert_eq!(config.runtime.max_parallel, 1);
         assert_eq!(config.runtime.poll_interval_seconds, 3600);
         assert_eq!(config.zellij.session_name, "${REPO}");
@@ -961,6 +997,14 @@ github:
         let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
         let error = Config::load_from_str(yaml, &path).expect_err("validation should fail");
         assert!(error.to_string().contains("github.project_id"));
+    }
+
+    #[test]
+    fn rejects_empty_poll_assignee_filter() {
+        let yaml = sample_config().replace("assignee_filter: \"$me\"", "assignee_filter: \"   \"");
+        let path = PathBuf::from("/tmp/.ai-teamlead/settings.yml");
+        let error = Config::load_from_str(&yaml, &path).expect_err("validation should fail");
+        assert!(error.to_string().contains("poll.assignee_filter"));
     }
 
     #[test]

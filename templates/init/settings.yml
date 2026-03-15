@@ -25,6 +25,11 @@
 #     done: "Done"
 #     implementation_blocked: "Implementation Blocked"
 #
+# poll:
+#   # Опционально. Если задано, poll и loop фильтруют backlog issue по assignee.
+#   # "$me" резолвится через `gh api user --jq '.login'`.
+#   assignee_filter: "$me"
+#
 # runtime:
 #   max_parallel: 1
 #   poll_interval_seconds: 3600

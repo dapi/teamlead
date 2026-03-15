@@ -1,5 +1,9 @@
 # Issue 14: `poll` фильтрует backlog по assignee
 
+Статус согласования: approved
+Approved By: dapi
+Approved At: 2026-03-15T17:20:01+03:00
+
 ## Issue
 
 - GitHub issue: https://github.com/dapi/ai-teamlead/issues/14

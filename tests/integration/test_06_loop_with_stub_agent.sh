@@ -12,6 +12,11 @@ LOOP_LOG="$(mktemp /tmp/ai-teamlead-loop-output-XXXXXX)"
 create_initialized_repo "$REPO_ROOT" "$AI_TEAMLEAD_BIN"
 perl -0pi -e 's/poll_interval_seconds: 3600/poll_interval_seconds: 1/' \
     "$REPO_ROOT/.ai-teamlead/settings.yml"
+cat >> "$REPO_ROOT/.ai-teamlead/settings.yml" <<'EOF'
+
+poll:
+  assignee_filter: "$me"
+EOF
 
 cat > "$GH_SNAPSHOT" <<'EOF'
 {"broken":
@@ -21,6 +26,7 @@ install_gh_stub "$STUB_BIN" "$GH_SNAPSHOT" "$GH_LOG"
 install_agent_stubs "$STUB_BIN" "$STUB_OUT"
 export PATH="$STUB_BIN:$PATH"
 export AI_TEAMLEAD_STUB_AGENT_SLEEP=1
+export AI_TEAMLEAD_TEST_GH_USER_LOGIN=dapi
 
 (
     sleep 0.5
@@ -30,12 +36,12 @@ EOF
 
     sleep 1
     cat > "$GH_SNAPSHOT" <<'EOF'
-{"data":{"node":{"id":"PVT_test_project","title":"Test Project","field":{"id":"STATUS_FIELD","options":[{"id":"OPT_BACKLOG","name":"Backlog"},{"id":"OPT_ANALYSIS","name":"Analysis In Progress"},{"id":"OPT_CLARIFY","name":"Waiting for Clarification"},{"id":"OPT_PLAN","name":"Waiting for Plan Review"},{"id":"OPT_READY","name":"Ready for Implementation"},{"id":"OPT_BLOCKED","name":"Analysis Blocked"}]},"items":{"nodes":[{"id":"ITEM-7","fieldValueByName":{"name":"Backlog","optionId":"OPT_BACKLOG"},"content":{"number":7,"state":"OPEN","repository":{"name":"example","owner":{"login":"dapi"}}}}]}}}}
+{"data":{"node":{"id":"PVT_test_project","title":"Test Project","field":{"id":"STATUS_FIELD","options":[{"id":"OPT_BACKLOG","name":"Backlog"},{"id":"OPT_ANALYSIS","name":"Analysis In Progress"},{"id":"OPT_CLARIFY","name":"Waiting for Clarification"},{"id":"OPT_PLAN","name":"Waiting for Plan Review"},{"id":"OPT_READY","name":"Ready for Implementation"},{"id":"OPT_BLOCKED","name":"Analysis Blocked"}]},"items":{"nodes":[{"id":"ITEM-7","fieldValueByName":{"name":"Backlog","optionId":"OPT_BACKLOG"},"content":{"number":7,"state":"OPEN","assignees":{"nodes":[{"login":"dapi"}]},"repository":{"name":"example","owner":{"login":"dapi"}}}}]}}}}
 EOF
 
     sleep 1.5
     cat > "$GH_SNAPSHOT" <<'EOF'
-{"data":{"node":{"id":"PVT_test_project","title":"Test Project","field":{"id":"STATUS_FIELD","options":[{"id":"OPT_BACKLOG","name":"Backlog"},{"id":"OPT_ANALYSIS","name":"Analysis In Progress"},{"id":"OPT_CLARIFY","name":"Waiting for Clarification"},{"id":"OPT_PLAN","name":"Waiting for Plan Review"},{"id":"OPT_READY","name":"Ready for Implementation"},{"id":"OPT_BLOCKED","name":"Analysis Blocked"}]},"items":{"nodes":[{"id":"ITEM-7","fieldValueByName":{"name":"Analysis In Progress","optionId":"OPT_ANALYSIS"},"content":{"number":7,"state":"OPEN","repository":{"name":"example","owner":{"login":"dapi"}}}}]}}}}
+{"data":{"node":{"id":"PVT_test_project","title":"Test Project","field":{"id":"STATUS_FIELD","options":[{"id":"OPT_BACKLOG","name":"Backlog"},{"id":"OPT_ANALYSIS","name":"Analysis In Progress"},{"id":"OPT_CLARIFY","name":"Waiting for Clarification"},{"id":"OPT_PLAN","name":"Waiting for Plan Review"},{"id":"OPT_READY","name":"Ready for Implementation"},{"id":"OPT_BLOCKED","name":"Analysis Blocked"}]},"items":{"nodes":[{"id":"ITEM-7","fieldValueByName":{"name":"Analysis In Progress","optionId":"OPT_ANALYSIS"},"content":{"number":7,"state":"OPEN","assignees":{"nodes":[{"login":"dapi"}]},"repository":{"name":"example","owner":{"login":"dapi"}}}}]}}}}
 EOF
 ) &
 SNAPSHOT_UPDATER_PID=$!
@@ -67,3 +73,4 @@ assert_file_contains "$LOOP_LOG" "loop: cycle=1 failed:" "loop logged first cycl
 assert_file_contains "$LOOP_LOG" "loop: cycle=2 no eligible backlog issues in project=Test Project" "loop survived empty cycle"
 assert_file_contains "$LOOP_LOG" "loop: cycle=3 launched issue #7 session_uuid=" "loop launched issue on later cycle"
 assert_file_contains "$LOOP_LOG" "loop: cycle=3 sleeping 1s" "loop kept scheduling after successful cycle"
+assert_eq "$(grep -Fc 'gh api user --jq .login' "$GH_LOG")" "1" 'loop resolves "$me" exactly once per process'

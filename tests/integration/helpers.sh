@@ -295,6 +295,11 @@ if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
     exit 0
 fi
 
+if [[ "${1:-}" == "api" && "${2:-}" == "user" ]]; then
+    printf '%s\n' "${AI_TEAMLEAD_TEST_GH_USER_LOGIN:-dapi}"
+    exit 0
+fi
+
 if [[ "${1:-}" == "pr" && "${2:-}" == "list" ]]; then
     printf '%s\n' "${AI_TEAMLEAD_TEST_GH_PR_LIST_RESULT:-[]}"
     exit 0

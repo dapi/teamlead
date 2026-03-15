@@ -108,7 +108,14 @@ fn run_poll(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
     let context = load_execution_context(shell, zellij_session_override)?;
     let github = GhProjectClient::new(shell);
     let zellij = ZellijLauncher::new(shell);
-    match run_poll_cycle(shell, &context, &github, &zellij)? {
+    let assignee_filter = resolve_poll_assignee_filter(&context, &github)?;
+    match run_poll_cycle(
+        shell,
+        &context,
+        &github,
+        &zellij,
+        assignee_filter.as_deref(),
+    )? {
         PollCycleOutcome::NoEligibleIssue { project_title } => {
             println!(
                 "poll: no eligible backlog issues for repo={}/{} in project={}",
@@ -138,12 +145,19 @@ fn run_loop(shell: &dyn Shell, zellij_session_override: Option<&str>) -> Result<
     let context = load_execution_context(shell, zellij_session_override)?;
     let github = GhProjectClient::new(shell);
     let zellij = ZellijLauncher::new(shell);
+    let assignee_filter = resolve_poll_assignee_filter(&context, &github)?;
     let interval = Duration::from_secs(context.config.runtime.poll_interval_seconds);
     let mut cycle_number = 1_u64;
 
     loop {
         println!("loop: cycle={cycle_number} started");
-        match run_poll_cycle(shell, &context, &github, &zellij) {
+        match run_poll_cycle(
+            shell,
+            &context,
+            &github,
+            &zellij,
+            assignee_filter.as_deref(),
+        ) {
             Ok(PollCycleOutcome::NoEligibleIssue { project_title }) => {
                 println!(
                     "loop: cycle={cycle_number} no eligible backlog issues in project={}",
@@ -194,6 +208,7 @@ fn run_poll_cycle(
     context: &ExecutionContext,
     github: &GhProjectClient<'_>,
     zellij: &ZellijLauncher<'_>,
+    assignee_filter: Option<&str>,
 ) -> Result<PollCycleOutcome> {
     let snapshot =
         github.load_project_snapshot(&context.repo.repo_root, &context.config.github.project_id)?;
@@ -202,6 +217,7 @@ fn run_poll_cycle(
         &context.config.issue_analysis_flow.statuses,
         &context.repo.github_owner,
         &context.repo.github_repo,
+        assignee_filter,
     ) else {
         return Ok(PollCycleOutcome::NoEligibleIssue {
             project_title: snapshot.title,
@@ -212,6 +228,31 @@ fn run_poll_cycle(
         shell, context, github, zellij, &snapshot, issue, false, None,
     )?;
     Ok(PollCycleOutcome::Launched(launch))
+}
+
+fn resolve_poll_assignee_filter(
+    context: &ExecutionContext,
+    github: &GhProjectClient<'_>,
+) -> Result<Option<String>> {
+    let Some(assignee_filter) = context
+        .config
+        .poll
+        .as_ref()
+        .and_then(|poll| poll.assignee_filter.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    if assignee_filter == "$me" {
+        return github
+            .resolve_current_user(&context.repo.repo_root)
+            .context("failed to resolve poll.assignee_filter \"$me\" via gh api user")
+            .map(Some);
+    }
+
+    Ok(Some(assignee_filter.to_string()))
 }
 
 fn run_manual_run(
@@ -376,6 +417,7 @@ fn attach_issue_to_project(
         issue_state: repo_issue.state.clone(),
         repo_owner: context.repo.github_owner.clone(),
         repo_name: context.repo.github_repo.clone(),
+        assignees: vec![],
         status_name: Some(backlog_status.to_string()),
         status_option_id: Some(backlog_option.to_string()),
     })
@@ -1429,6 +1471,7 @@ mod launch_agent_tests {
                 github: GithubConfig {
                     project_id: "PVT_test_project".into(),
                 },
+                poll: None,
                 issue_analysis_flow: IssueAnalysisFlowConfig {
                     statuses: FlowStatuses {
                         backlog: "Backlog".into(),

@@ -60,6 +60,9 @@ Bootstrap overview:
 #     implementation_blocked: "Implementation Blocked"
 #     done: "Done"
 #
+# poll:
+#   assignee_filter: "$me"
+#
 # runtime:
 #   max_parallel: 1
 #   poll_interval_seconds: 3600
@@ -162,10 +165,31 @@ Bootstrap overview:
 
 ## Example-only extension поля
 
+- `poll.assignee_filter`
 - `zellij.layout`
 
 Эти поля показываются в bootstrap template как opt-in examples и не обязаны
 появляться в active YAML.
+
+## `poll.assignee_filter`
+
+`poll.assignee_filter` задает opt-in фильтрацию backlog по assignee для
+`poll` и `loop`.
+
+Поддерживаемые режимы:
+
+- поле не задано: поведение `poll` не меняется, фильтра по assignee нет;
+- `"$me"`: backlog фильтруется по текущему GitHub-пользователю, которого
+  runtime резолвит через `gh api user --jq '.login'`;
+- `"username"`: backlog фильтруется по указанному login.
+
+Правила:
+
+- поле не влияет на ручной `run`;
+- `"$me"` должен резолвиться один раз на запуск `poll` или на жизнь процесса
+  `loop`;
+- issue без assignee не матчится, если фильтр задан;
+- если у issue несколько assignees, достаточно совпадения хотя бы одного login.
 
 ## Launch agent templates
 

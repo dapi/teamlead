@@ -66,11 +66,13 @@
 - [docs/templates/feature-spec-template.md](./docs/templates/feature-spec-template.md)
 - [docs/issue-analysis-flow.md](./docs/issue-analysis-flow.md)
 - [docs/issue-implementation-flow.md](./docs/issue-implementation-flow.md)
+- [docs/untrusted-input-security.md](./docs/untrusted-input-security.md)
 - [docs/features/0001-ai-teamlead-cli/README.md](./docs/features/0001-ai-teamlead-cli/README.md)
 - [docs/features/0002-repo-init/README.md](./docs/features/0002-repo-init/README.md)
 - [docs/features/0003-agent-launch-orchestration/README.md](./docs/features/0003-agent-launch-orchestration/README.md)
 - [docs/features/0004-issue-implementation-flow/README.md](./docs/features/0004-issue-implementation-flow/README.md)
 - [docs/features/0005-agent-flow-integration-testing/README.md](./docs/features/0005-agent-flow-integration-testing/README.md)
+- [docs/features/0006-public-repo-security/README.md](./docs/features/0006-public-repo-security/README.md)
 - [AURA.md](./AURA.md) как project-local доступ к
   личному высокоуровневому инженерному видению разработчика
 
@@ -213,53 +215,76 @@ Flow реализации и handoff после принятия плана вы
 - GitHub owner/repo для MVP всегда берутся из текущего git-репозитория и не
   переопределяются через конфиг
 
-Минимальная структура для MVP:
+Минимальный active override для MVP:
 
 ```yaml
 github:
   project_id: "PVT_xxx"
+```
 
-issue_analysis_flow:
-  statuses:
-    backlog: "Backlog"
-    analysis_in_progress: "Analysis In Progress"
-    waiting_for_clarification: "Waiting for Clarification"
-    waiting_for_plan_review: "Waiting for Plan Review"
-    ready_for_implementation: "Ready for Implementation"
-    analysis_blocked: "Analysis Blocked"
+Остальные MVP-поля приложение может брать из canonical default-layer. Поэтому
+`templates/init/settings.yml` может оставаться comment-only шаблоном, где
+defaulted-поля отражены в закомментированном виде как documented defaults, а не
+как обязательный активный YAML.
 
-issue_implementation_flow:
-  statuses:
-    ready_for_implementation: "Ready for Implementation"
-    implementation_in_progress: "Implementation In Progress"
-    waiting_for_ci: "Waiting for CI"
-    waiting_for_code_review: "Waiting for Code Review"
-    done: "Done"
-    implementation_blocked: "Implementation Blocked"
+Закомментированный bootstrap overview для defaulted-полей выглядит так:
 
-runtime:
-  max_parallel: 1
-  poll_interval_seconds: 3600
-
-zellij:
-  session_name: "${REPO}"
-  tab_name: "issue-analysis"
-
-launch_agent:
-  analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
-  worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
-  analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
-  implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
-  implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
-  implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+```yaml
+# issue_analysis_flow:
+#   statuses:
+#     backlog: "Backlog"
+#     analysis_in_progress: "Analysis In Progress"
+#     waiting_for_clarification: "Waiting for Clarification"
+#     waiting_for_plan_review: "Waiting for Plan Review"
+#     ready_for_implementation: "Ready for Implementation"
+#     analysis_blocked: "Analysis Blocked"
+#
+# issue_implementation_flow:
+#   statuses:
+#     ready_for_implementation: "Ready for Implementation"
+#     implementation_in_progress: "Implementation In Progress"
+#     waiting_for_ci: "Waiting for CI"
+#     waiting_for_code_review: "Waiting for Code Review"
+#     done: "Done"
+#     implementation_blocked: "Implementation Blocked"
+#
+# runtime:
+#   max_parallel: 1
+#   poll_interval_seconds: 3600
+#
+# zellij:
+#   session_name: "${REPO}"
+#   tab_name: "issue-analysis"
+#   tab_name_template: "#${ISSUE_NUMBER}"
+#   layout: "compact"
+#
+# launch_agent:
+#   analysis_branch_template: "analysis/issue-${ISSUE_NUMBER}"
+#   worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+#   analysis_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+#   global_args:
+#     claude:
+#       - "--permission-mode"
+#       - "auto"
+#     codex:
+#       - "--full-auto"
+#   implementation_branch_template: "implementation/issue-${ISSUE_NUMBER}"
+#   implementation_worktree_root_template: "${HOME}/worktrees/${REPO}/${BRANCH}"
+#   implementation_artifacts_dir_template: "specs/issues/${ISSUE_NUMBER}"
+#
+#   # opt-in example:
+#   # global_args:
+#   #   claude:
+#   #     - "--dangerously-skip-permissions"
 ```
 
 `zellij.session_name` задает versioned fallback для target session, а
 `zellij.tab_name` задает versioned target tab.
 
-Bootstrap default для `zellij.session_name` хранится в `settings.yml` как
-template `${REPO}`. Во время реального запуска `ai-teamlead` подставляет сюда
-canonical GitHub repo slug из `origin`.
+Documented default для `zellij.session_name` хранится в `settings.yml` как
+закомментированный template `${REPO}`. Во время реального запуска `ai-teamlead`
+подставляет сюда canonical GitHub repo slug из `origin`, если активный YAML не
+переопределяет это поле.
 
 Для `zellij.session_name` в MVP поддерживается только placeholder `${REPO}`.
 Если после рендера в значении остались `${...}`, запуск завершается ошибкой
@@ -274,10 +299,12 @@ canonical GitHub repo slug из `origin`.
 - для existing session валидирует, что в ней нет panes из другого GitHub repo
 - сохраняет runtime `session_id`, `tab_id`, `pane_id` уже в `.git/.ai-teamlead/`
 
-Обязательные поля MVP:
+`github.project_id` остается required-without-default полем.
 
-- `github.project_id`
+Defaulted-by-application поля MVP:
+
 - `issue_analysis_flow.statuses.*`
+- `issue_implementation_flow.statuses.*`
 - `runtime.max_parallel`
 - `runtime.poll_interval_seconds`
 - `zellij.session_name`
@@ -285,6 +312,15 @@ canonical GitHub repo slug из `origin`.
 - `launch_agent.analysis_branch_template`
 - `launch_agent.worktree_root_template`
 - `launch_agent.analysis_artifacts_dir_template`
+- `launch_agent.implementation_branch_template`
+- `launch_agent.implementation_worktree_root_template`
+- `launch_agent.implementation_artifacts_dir_template`
+
+Явно допустимое `example-only extension` поле:
+
+- `zellij.layout`
+  В bootstrap template остается как закомментированный opt-in пример. При
+  отсутствии active override runtime поведение не меняется.
 
 Дополнительно имеет смысл зарезервировать место для:
 
@@ -300,8 +336,6 @@ canonical GitHub repo slug из `origin`.
   На случай GitHub Enterprise.
 - `runtime.poll_lock_file`
   Если захотим явно настраивать lock path для poller.
-- `zellij.layout`
-  Если позже появятся разные режимы запуска.
 - `prompts.issue_analysis_flow`
   Если вынесем prompt-файлы в конфигурируемые пути.
 
@@ -383,10 +417,10 @@ Project-local agent assets:
 
 После `init` оператор должен вручную завершить bootstrap:
 
-1. заменить placeholder в `github.project_id` на реальный GitHub Project id
-2. при необходимости скорректировать `zellij.session_name`
-3. при необходимости скорректировать `launch_agent.*` templates под layout
-   проекта
+1. раскомментировать и заменить `github.project_id` на реальный GitHub Project
+   id
+2. при необходимости раскомментировать и скорректировать `zellij.session_name`,
+   `zellij.layout` или `launch_agent.*` templates под layout проекта
 4. только после этого запускать `poll`, `run` или `loop`
 
 Если `github.project_id` оставлен placeholder-значением или указывает на

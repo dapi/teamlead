@@ -824,6 +824,7 @@ mod tests {
                 &ZellijConfig {
                     session_name: "teamlead".into(),
                     tab_name: "issue-analysis".into(),
+                    tab_name_template: None,
                     layout: None,
                 },
                 15,
@@ -899,6 +900,7 @@ mod tests {
                 &ZellijConfig {
                     session_name: "teamlead".into(),
                     tab_name: "issue-analysis".into(),
+                    tab_name_template: None,
                     layout: None,
                 },
                 15,
@@ -980,6 +982,7 @@ mod tests {
                 &ZellijConfig {
                     session_name: "teamlead".into(),
                     tab_name: "issue-analysis".into(),
+                    tab_name_template: None,
                     layout: None,
                 },
                 15,
@@ -1074,6 +1077,7 @@ mod tests {
                 &ZellijConfig {
                     session_name: "teamlead".into(),
                     tab_name: "issue-analysis".into(),
+                    tab_name_template: None,
                     layout: None,
                 },
                 15,
@@ -1153,6 +1157,7 @@ mod tests {
                 &ZellijConfig {
                     session_name: "teamlead".into(),
                     tab_name: "issue-analysis".into(),
+                    tab_name_template: None,
                     layout: None,
                 },
                 15,

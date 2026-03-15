@@ -86,45 +86,30 @@
 
 ## Конфигурация
 
-Минимальный контракт `./.ai-teamlead/settings.yml`:
+Минимальный active override контракт `./.ai-teamlead/settings.yml`:
 
 ```yaml
 github:
   project_id: "PVT_xxx"
-
-issue_analysis_flow:
-  statuses:
-    backlog: "Backlog"
-    analysis_in_progress: "Analysis In Progress"
-    waiting_for_clarification: "Waiting for Clarification"
-    waiting_for_plan_review: "Waiting for Plan Review"
-    ready_for_implementation: "Ready for Implementation"
-    analysis_blocked: "Analysis Blocked"
-
-issue_implementation_flow:
-  statuses:
-    ready_for_implementation: "Ready for Implementation"
-    implementation_in_progress: "Implementation In Progress"
-    waiting_for_ci: "Waiting for CI"
-    waiting_for_code_review: "Waiting for Code Review"
-    implementation_blocked: "Implementation Blocked"
-
-runtime:
-  max_parallel: 1
-  poll_interval_seconds: 3600
-
-zellij:
-  session_name: "${REPO}"
-  tab_name: "issue-analysis"
 ```
+
+Остальные MVP-поля могут приходить из canonical runtime defaults, поэтому
+bootstrap `settings.yml` допускается как comment-only template с
+закомментированными defaults и placeholder для `github.project_id`.
 
 Здесь:
 
+- `github.project_id` остается `required-without-default` полем
 - `session_name` следует правилу из
   [ADR-0021](../../../docs/adr/0021-zellij-session-target-resolution.md):
   default хранится как `${REPO}` и рендерится из GitHub repo slug, но
   используется как fallback после CLI override и `ZELLIJ_SESSION_NAME`
 - `tab_name` это стабильный project-local идентификатор для orchestration
+- analysis/implementation statuses, `runtime.*`, `zellij.*` и
+  `launch_agent.*` относятся к `defaulted-by-application`
+- `zellij.layout` остается `example-only extension`: template показывает
+  возможный opt-in custom layout, но отсутствие active override не меняет
+  runtime-path
 - runtime `session_id`, `tab_id`, `pane_id` не задаются в конфиге
 - `ai-teamlead` во время запуска должен выбрать effective target session,
   запретить shared multi-repo existing session и затем либо найти существующие

@@ -78,11 +78,47 @@ else
     ((FAIL++)) || true
 fi
 
-if grep -Fq 'layout: "compact"' "$SETTINGS_FILE"; then
-    echo "  PASS: init bootstraps zellij.layout as compact"
+if grep -Fq '#   layout: "compact"' "$SETTINGS_FILE"; then
+    echo "  PASS: init documents zellij.layout default as compact"
     ((PASS++)) || true
 else
-    echo "  FAIL: init bootstraps zellij.layout as compact"
+    echo "  FAIL: init documents zellij.layout default as compact"
+    ((FAIL++)) || true
+fi
+
+if grep -Eq '^[[:space:]]*[A-Za-z0-9_]+:' "$SETTINGS_FILE"; then
+    echo "  FAIL: init must keep zero-config settings template comment-only"
+    ((FAIL++)) || true
+else
+    echo "  PASS: init keeps zero-config settings template comment-only"
+    ((PASS++)) || true
+fi
+
+if grep -Fq '#   global_args:' "$SETTINGS_FILE" && \
+   grep -Fq '#       - "--permission-mode"' "$SETTINGS_FILE" && \
+   grep -Fq '#       - "--full-auto"' "$SETTINGS_FILE"; then
+    echo "  PASS: init documents canonical agent global args defaults"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init documents canonical agent global args defaults"
+    ((FAIL++)) || true
+fi
+
+if grep -Fq 'global_args:' "$SETTINGS_FILE" && \
+   grep -Fq '#   # global_args:' "$SETTINGS_FILE" && \
+   grep -Fq -- '--dangerously-skip-permissions' "$SETTINGS_FILE"; then
+    echo "  PASS: init keeps dangerous claude args as opt-in example"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init keeps dangerous claude args as opt-in example"
+    ((FAIL++)) || true
+fi
+
+if grep -Fq '#   tab_name_template: "#${ISSUE_NUMBER}"' "$SETTINGS_FILE"; then
+    echo "  PASS: init keeps tab_name_template as opt-in example"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init keeps tab_name_template as opt-in example"
     ((FAIL++)) || true
 fi
 
@@ -102,6 +138,14 @@ if grep -Fq 'README.md' "$FLOW_FILE" && \
     ((PASS++)) || true
 else
     echo "  FAIL: init bootstraps minimal SDD artifact contract"
+    ((FAIL++)) || true
+fi
+
+if grep -Fq '#   project_id: "PVT_replace_me"' "$SETTINGS_FILE"; then
+    echo "  PASS: init documents required github.project_id as commented placeholder"
+    ((PASS++)) || true
+else
+    echo "  FAIL: init documents required github.project_id as commented placeholder"
     ((FAIL++)) || true
 fi
 

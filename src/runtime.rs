@@ -363,6 +363,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: None,
         };
 
@@ -414,6 +415,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: None,
         };
 
@@ -456,6 +458,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: None,
         };
 
@@ -503,6 +506,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: None,
         };
 
@@ -604,6 +608,7 @@ mod tests {
         let zellij = ZellijConfig {
             session_name: "ai-teamlead".into(),
             tab_name: "issue-analysis".into(),
+            tab_name_template: None,
             layout: None,
         };
 

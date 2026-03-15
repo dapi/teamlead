@@ -52,6 +52,8 @@ Milestone: `Кластер: Run/Poll semantics`
   preflight-нормализация issue перед `run`
 - [#67](https://github.com/dapi/ai-teamlead/issues/67) —
   dependency-aware lifecycle для связанных GitHub issues
+- [#71](https://github.com/dapi/ai-teamlead/issues/71) —
+  roadmap-aware ordering для выбора следующей eligible issue
 
 ### 3. Launch orchestration и multiplexer
 
@@ -133,6 +135,8 @@ Milestone: `Кластер: Release и user docs`
   [#51](https://github.com/dapi/ai-teamlead/issues/51)
 - [#4](https://github.com/dapi/ai-teamlead/issues/4) ->
   [#25](https://github.com/dapi/ai-teamlead/issues/25)
+- [#67](https://github.com/dapi/ai-teamlead/issues/67) ->
+  [#71](https://github.com/dapi/ai-teamlead/issues/71)
 
 ## Жесткий dependency graph
 
@@ -180,6 +184,7 @@ flowchart TD
 | [#18](https://github.com/dapi/ai-teamlead/issues/18) | связана с [#4](https://github.com/dapi/ai-teamlead/issues/4) и [#11](https://github.com/dapi/ai-teamlead/issues/11) | задача шире простого session recovery и включает operator policy |
 | [#68](https://github.com/dapi/ai-teamlead/issues/68) | связана с [#47](https://github.com/dapi/ai-teamlead/issues/47) и кластером recovery | это отдельный re-entry contract, а не прямой дочерний шаг launch-target work |
 | [#21](https://github.com/dapi/ai-teamlead/issues/21) | тесно связана с [#14](https://github.com/dapi/ai-teamlead/issues/14) | ближе к sibling/follow-up, чем к sub-issue |
+| [#71](https://github.com/dapi/ai-teamlead/issues/71) | опирается на [#67](https://github.com/dapi/ai-teamlead/issues/67) | backlog ordering должен использовать уже определенный hard-eligibility contract, но не смешиваться с lifecycle связей |
 | [#9](https://github.com/dapi/ai-teamlead/issues/9) | зависит от зрелости [#8](https://github.com/dapi/ai-teamlead/issues/8), частично от [#7](https://github.com/dapi/ai-teamlead/issues/7) | README можно улучшать итеративно, без жесткой блокировки |
 | [#38](https://github.com/dapi/ai-teamlead/issues/38) | является enabling work для runtime/zellij-фич | это инфраструктурный enabler сразу для нескольких кластеров |
 | [#56](https://github.com/dapi/ai-teamlead/issues/56) | влияет на release/onboarding/public repo adoption | это cross-cutting security baseline, а не локальный blocker одной issue |

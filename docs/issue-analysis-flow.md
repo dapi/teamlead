@@ -182,9 +182,16 @@ Poller или ручной запуск выбирает одну подходя
 - issue связывается с этим `session_uuid` в отношении `1 <-> 1`
 - target `zellij` session определяется в порядке:
   `--zellij-session` -> `ZELLIJ_SESSION_NAME` -> `zellij.session_name`
-- `zellij.tab_name` задается конфигурацией проекта
+- effective launch target для `run` определяется в порядке:
+  `--launch-target` -> `zellij.launch_target` -> runtime default `tab`
+- `poll` и `loop` не имеют отдельного public `--launch-target` override и
+  используют только config/default path
+- `zellij.tab_name` задает stable shared tab для `pane`-режима
+- optional `zellij.tab_name_template` влияет только на `tab`-режим
 - orchestration-слой создает или находит нужные session/tab по effective target
-  session и `tab_name`
+  session и launch target:
+  - `pane` переиспользует shared tab или создает его, если он отсутствует
+  - `tab` создает отдельный analysis tab
 - existing session не должна содержать panes из другого GitHub repo
 - после запуска pane в runtime state сохраняются `zellij.session_id`,
   `zellij.tab_id` и `zellij.pane_id`
@@ -230,14 +237,6 @@ Human gate обязателен в двух местах:
 
 Если пользователь принимает план, issue переводится в
 `Ready for Implementation`.
-
-При этом versioned analysis artifacts должны обновить approval metadata
-следующим образом:
-
-- `Статус согласования` меняется на `approved`;
-- фиксируются `Approved By` и `Approved At`;
-- `Статус` issue-level analysis документов не должен дублировать human gate и
-  поэтому не обязан меняться с `draft` на `approved`.
 
 После этого дальнейший `run <issue>` должен маршрутизироваться уже в
 implementation flow, а не обратно в analysis flow.
@@ -407,6 +406,9 @@ TUI/CLI-контрола или формализованных action-кнопо
 
 - содержать ссылки на все документы, без которых нельзя корректно выполнить
   задачу
+- содержать явный план изменений документации: какие канонические документы,
+  summary-слои или шаблоны нужно обновить и что допустимо оставить без
+  изменений
 - связывать этапы реализации с SSOT, ADR, verification-документами и quality
   bar
 - позволять агенту быстро восстанавливать причинно-следственные связи решений
@@ -874,3 +876,8 @@ ai-teamlead internal complete-stage <session_uuid> --outcome <outcome> --message
   `ai-teamlead internal complete-stage`
 - orchestration commit/push/draft PR выведен из prompt-обязанностей агента в
   CLI-команду завершения стадии
+
+### 2026-03-15
+
+- добавлено требование включать в `План имплементации` явный план изменений
+  документации

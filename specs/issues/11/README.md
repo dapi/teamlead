@@ -1,10 +1,9 @@
 # Issue 11: `run` и понятные ошибки для issue вне проекта, закрытых issue и недопустимых entry status
 
-Статус: draft
+Статус: approved
 Тип задачи: bug
 Размер: medium
 Последнее обновление: 2026-03-15
-Статус согласования: approved
 Approved By: dapi
 Approved At: 2026-03-15T11:52:35+03:00
 

@@ -1,5 +1,7 @@
 # ai-teamlead workflow
 
+[![CI](https://github.com/dapi/ai-teamlead/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/dapi/ai-teamlead/actions/workflows/ci.yml)
+
 Этот проект это набор локальных CLI-first скриптов для персонального workflow
 вокруг AI-driven анализа GitHub issue.
 
